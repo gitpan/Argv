@@ -45,3 +45,10 @@ Revision history for Perl extension Argv.
 0.35  Wed Dec  8 23:22:54 EST 1999
 	- Some cosmetic work.
 	- Improved integration with IPC::ChildSafe with quoting fixes.
+
+0.39  Thu Dec 16 21:58:20 EST 1999
+	- Renamed 'ipc' method to 'childsafe'.
+	- Renamed 'dfltopts' method to 'dfltsets'.
+	- Added 'stdopts' method.
+	- Allow config data to be specified for methods calling
+	  Getopt::Long::GetOptions().

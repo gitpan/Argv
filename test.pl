@@ -55,7 +55,7 @@ $ld->system('-');
 $final += printok($? == 0);
 $ld->dbglevel(0);
 
-$ld->dfltopts(['-']);
+$ld->dfltsets(['-']);
 print $ld->qx;
 $final += printok($? == 0);
 

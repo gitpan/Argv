@@ -5,12 +5,11 @@ use vars qw($VERSION @ISA @EXPORT_OK);
 use Carp;
 require Exporter;
 @ISA = qw(Exporter);
-
-use constant MSWIN	=> $^O =~ /win32/i;
+$VERSION = '0.39';
 
 @EXPORT_OK = qw(system exec qv); # to support the "FUNCTIONAL INTERFACE"
 
-$VERSION = '0.35';
+use constant MSWIN	=> $^O =~ /win32/i;
 
 # Adapted from perltootc (see): an "eponymous meta-object" implementing
 # "translucent attributes".
@@ -27,7 +26,7 @@ use vars qw(%Argv);
    AUTOQUOTE		=> defined($ENV{ARGV_AUTOQUOTE}) ?
 			 $ENV{ARGV_AUTOQUOTE} : 1,
    DBGLEVEL		=> $ENV{ARGV_DBGLEVEL} || 0,
-   DFLTOPTS		=> [''],
+   DFLTSETS		=> [''],
    EXECWAIT		=> defined($ENV{ARGV_EXECWAIT}) ?
 			 $ENV{ARGV_EXECWAIT} : 1,
    NATIVEPATH		=> $ENV{ARGV_NATIVEPATH} || scalar(MSWIN),
@@ -76,7 +75,7 @@ __PACKAGE__->stdmethod;
 # true, it starts up a coprocess. If called with false (aka 0) it
 # shuts down the coprocess and destroys the IPC::ChildSafe object. And
 # if called with no params at all it returns the IPC::ChildSafe object.
-sub ipc {
+sub childsafe {
    my $self = shift;
    my $ipc_state = $_[0];
    my $ipc_obj;
@@ -88,9 +87,8 @@ sub ipc {
       } elsif ($@) {
 	 warn $@;
 	 return undef;
-      } elsif (defined $IPC::ChildSafe::VERSION) {
-	  my $ver = $IPC::ChildSafe::VERSION;
-	  die "IPC::ChildSafe 2.32 required - this is only $ver" if $ver < 2.32;
+      } else {
+	 IPC::ChildSafe->VERSION(3.01);
       }
       $ipc_obj = IPC::ChildSafe->new(@_);
    }
@@ -109,6 +107,28 @@ sub ipc {
 	  return __PACKAGE__->{IPC};
       }
    }
+}
+
+sub stdopts {
+    my $self = shift;
+    my $class = ref $self || $self;
+    require Getopt::Long;
+    my @configs = @_ ? @_ : qw(no_auto_abbrev pass_through);
+    Getopt::Long::config(@configs);
+    no strict 'refs';
+    my @flags = map lc, keys %{$class};
+    my %opt;
+    if (ref $self) {
+	local @ARGV = @ARGV;
+	Getopt::Long::GetOptions(\%opt, map {"$_=i"} @flags);
+	$self->args(@ARGV);	# now a possibly depleted array
+    } else {
+	Getopt::Long::GetOptions(\%opt, map {"$_=i"} @flags);
+    }
+    for my $method (keys %opt) {
+	$self->$method($opt{$method});
+    }
+    return $self;
 }
 
 # A class method which prints a summary of operations performed.
@@ -160,8 +180,9 @@ sub new {
 sub prog {
    my $self = shift;
    if (@_ || !defined(wantarray)) {
-      $self->dbg("setting prog to '@_'");
-      @{$self->{PROG}} = ref $_[0] ? @{$_[0]} : @_;
+      my @prog = ref $_[0] ? @{$_[0]} : @_;
+      $self->dbg("setting prog to '@prog'");
+      @{$self->{PROG}} = @prog;
    }
    if (@_) {
       return $self;
@@ -189,8 +210,7 @@ sub optset {
       my $set = uc $_;
       $self->{OPTS}{$set} = [];
       $self->{LINKAGE}{$set} = {};
-      my($p_meth, $o_meth, $f_meth) =
-	    map { $_ . $set } qw(parse opts flag);
+      my($p_meth, $o_meth, $f_meth) = map { $_ . $set } qw(parse opts flag);
       $self->dbg("installing optset methods $p_meth() $o_meth() $f_meth()");
       $self->{DESC}{$set} = [];
       no strict 'refs'; # needed to muck with symbol table
@@ -198,10 +218,20 @@ sub optset {
 	 my $self = shift;
 	 $self->{DESC}{$set} ||= [];
 	 if (@_) {
-	    $self->warning("do not provide a linkage specifier!") if ref $_[0];
+	    if (ref($_[0]) eq 'ARRAY') {
+		$self->{CFG}{$set} = shift;
+	    } elsif (ref($_[0]) eq 'HASH') {
+		$self->warning("do not provide a linkage specifier");
+		shift;
+	    }
 	    $self->dbg("setting optset '$set' descs to '@_'");
 	    @{$self->{DESC}{$set}} = @_;
-	    $self->factor($set);
+	    $self->factor($set, $self->{DESC}{$set}, $self->{OPTS}{$set},
+					    $self->{ARGS}, $self->{CFG}{$set});
+	    if (defined $self->{OPTS}{$set}) {
+	       my @parsedout = @{$self->{OPTS}{$set}};
+	       $self->dbg("parsed out '@parsedout' into optset '$set'");
+	    }
 	 }
 	 return @{$self->{OPTS}{$set}};
       } unless $Argv::{$p_meth};
@@ -232,34 +262,28 @@ sub optset {
 
 sub factor {
    my $self = shift;
-   my $pset = shift;
-   return undef if ! $self->{DESC}{$pset};
+   my($pset, $r_desc, $r_opts, $r_args, $r_cfg) = @_;
    my %vgra;
    {
       require Getopt::Long;
-      local @ARGV = @{$self->{ARGS}};
-      my @configs = qw(pass_through);
+      my @configs = $r_cfg ? @$r_cfg : qw(auto_abbrev pass_through);
       push(@configs, 'debug') if $self->dbglevel >= 4;
       Getopt::Long::config(@configs);
-      Getopt::Long::GetOptions($self->{LINKAGE}{$pset}, @{$self->{DESC}{$pset}})
-	      if @{$self->{DESC}{$pset}};
+      local @ARGV = @$r_args;
+      Getopt::Long::GetOptions($self->{LINKAGE}{$pset}, @$r_desc) if @$r_desc;
       for (0..$#ARGV) { $vgra{$ARGV[$_]} = $_ }
    }
    my(@opts, @args);
-   for (@{$self->{ARGS}}) {
+   for (@$r_args) {
       if (defined $vgra{$_}) {
 	 push(@args, $_);
       } else {
 	 push(@opts, $_);
       }
    }
-   @{$self->{OPTS}{$pset}} = @opts;
-   @{$self->{ARGS}} = @args;
-   if (defined $self->{OPTS}{$pset}) {
-      my @parsedout = @{$self->{OPTS}{$pset}};
-      $self->dbg("parsed out '@parsedout' into optset '$pset'");
-   }
-   return %vgra;
+   @$r_opts = @opts if $r_opts;
+   @$r_args = @args;
+   return @opts;
 }
 
 sub extract {
@@ -276,14 +300,13 @@ sub extract {
 
 sub quote {
    my $self = shift;
-   @_ = $self->args if !@_;
    for (@_) {
       # If requested, change / for \ in Windows file paths.
       s%/%\\%g if $self->nativepath;
       # Skip arg if already quoted ...
       next if substr($_, 0, 1) eq '"' && substr($_, -1, 1) eq '"';
       # ... or contains no special chars.
-      next unless m%[^-_.\w/\\]% || tr%\n%%;
+      next unless m%[^-=:_.\w/\\]% || tr%\n%%;
       # Special case - turn any expanded newlines back into literal \n.
       s%\n%\\n%g if MSWIN;
       # Special case - leave things that look like redirections alone.
@@ -323,18 +346,15 @@ sub _sets2opts {
    my $self = shift;
    my(@sets, @opts);
    if (! @_) {
-       @sets = @{$self->dfltopts};
+       @sets = @{$self->dfltsets};
    } elsif ($_[0] eq '-') {
       @sets = ();
    } elsif ($_[0] eq '+') {
       @sets = $self->optset;
    } else {
       my %known = map {$_ => 1} $self->optset;
-      for (@_) {
-	 $self->warning("Unknown optset '$_'\n") if !$known{$_};
-      }
-      $self->dfltopts(\@_);
-      @sets = @{$self->dfltopts};
+      for (@_) { $self->warning("Unknown optset '$_'\n") if !$known{$_} }
+      @sets = @_;
    }
    for my $set (@sets) {
       next unless $self->{OPTS}{$set} && @{$self->{OPTS}{$set}};
@@ -356,8 +376,8 @@ sub _addstats {
 sub exec {
    return Argv->new(@_)->exec if !ref($_[0]);
    my $self = shift;
-   if ($self->ipc) {
-      exit($self->system(@_) | $self->ipc->finish);
+   if ($self->childsafe) {
+      exit($self->system(@_) | $self->childsafe->finish);
    } elsif (MSWIN && $self->execwait) {
       exit $self->system(@_);
    } else {
@@ -376,6 +396,18 @@ sub exec {
    }
 }
 
+sub ipccmd {
+    my $self = shift;
+    my $cmd = shift;
+    if (@_) {
+	$cmd = "@_";
+    } else {
+	$cmd =~ /^\w+\s*(.*)/;
+    }
+    my %results = $self->childsafe->cmd($cmd);
+    return %results;
+}
+
 sub system {
    return Argv->new(@_)->system if !ref($_[0]);
    my $self = shift;
@@ -383,17 +415,16 @@ sub system {
    my @prog = @{$self->{PROG}};
    my @opts = $self->_sets2opts(@_);
    my @args = @{$self->{ARGS}};
-   $self->quote(@opts, @args)
-	 if (((MSWIN && (@prog + @opts + @args) > 1) || $self->ipc)
-						      && $self->autoquote);
    my @cmd = (@prog, @opts, @args);
+   # Must pass (@prog, @opts, @args) in order for quoting to stick.
+   @cmd = $self->quote(@prog, @opts, @args)
+	 if (((MSWIN && @cmd > 1) || $self->childsafe) && $self->autoquote);
    my $rc = 0;
    if ($self->noexec) {
       print STDERR "+ @cmd\n";
    } else {
-      if ($self->ipc) {
-	 my($s) = @cmd > 1 ? "@cmd[1..$#cmd]" : ($cmd[0] =~ /^\w+\s*(.*)/);
-	 my %results = $self->ipc->cmd($s);
+      if ($self->childsafe) {
+	 my %results = $self->ipccmd(@cmd);
 	 $? = $results{status} << 8;
 	 print STDOUT @{$results{stdout}} if $self->stdout;
 	 print STDERR @{$results{stderr}} if $self->stderr;
@@ -423,13 +454,13 @@ sub qx {
    my @prog = @{$self->{PROG}};
    my @opts = $self->_sets2opts(@_);
    my @args = @{$self->{ARGS}};
-   $self->quote(@opts, @args)
-	 if (((@prog + @opts + @args) > 1 || $self->ipc) && $self->autoquote);
+   my @cmd =(@prog, @opts, @args);
+   # Must pass (@prog, @opts, @args) in order for quoting to stick.
+   @cmd = $self->quote(@prog, @opts, @args)
+		  if ((@cmd > 1 || $self->childsafe) && $self->autoquote);
    my @data;
-   if ($self->ipc) {
-      my @cmd = (@prog, @opts, @args);
-      my($s) = @cmd > 1 ? "@cmd[1..$#cmd]" : ($cmd[0] =~ /^\w+\s*(.*)/);
-      my %results = $self->ipc->cmd($s);
+   if ($self->childsafe) {
+      my %results = $self->ipccmd(@cmd);
       $? = $results{status} << 8;
       print STDERR @{$results{stderr}} if $self->stderr;
       @data = @{$results{stdout}};
@@ -437,7 +468,7 @@ sub qx {
       my $limit = $self->qxargs;
       if ($limit && @args) {
 	 while (my @chunk = splice(@args, 0, $limit)) {
-	    my @cmd = (@prog, @opts, @chunk);
+	    @cmd = (@prog, @opts, @chunk);
 	    if ($self->noexec) {
 	       print STDERR "+ @cmd\n";
 	    } else {
@@ -448,7 +479,6 @@ sub qx {
 	    }
 	 }
       } else {
-	 my @cmd = (@prog, @opts, @args);
 	 if ($self->noexec) {
 	    print STDERR "+ @cmd\n";
 	 } else {
@@ -729,8 +759,9 @@ always available.  Most users won't need to define any other sets.
 
 Takes a list of option descriptions and uses Getopt::Long::GetOptions()
 to parse them out of the current argv B<and into option set I<NAME>>.
-Since it uses Getopt::Long, the opt-descs are exactly as supported by
-your version of that, except that no linkage argument is allowed.
+The opt-descs are exactly as supported by parseI<FOO>() are exactly the
+same as those described for Getopt::Long, except that no linkage
+argument is allowed.
 
 =item * optsI<NAME>()
 
@@ -746,18 +777,34 @@ Reassembles the complete argv and invokes system() on it. Return value
 and value of $?, $!, etc. are just as described for L<perlfunc/"system">
 
 Arguments to this method determine which of the parsed option-sets will
-be used in the executed argv. By default, only the anonymous option set
-is used. A different set of option sets may be requested by passing
-their names.
+be used in the executed argv. If passed no arguments, C<$obj->system>
+uses the value of the 'dfltsets' attribute as the list of desired
+sets. By default only the anonymous option set is used.
+A different set of option sets may be requested via the C<$obj->dfltsets
+method.
 
 An option set may be requested by passing its name (with an optional
 leading '+') or explicitly rejected by using its name with a leading
 '-'. Thus, given the existence of option sets I<ONE, TWO, and THREE>,
 the following are legal:
 
-   $obj->system;			# use none
-   $obj->system('+');			# use all
-   $obj->system(qw(ONE -TWO +THREE);	# use ONE and THREE
+   $obj->system;			# use the anonymous set only
+   $obj->system('+');			# use all option sets
+   $obj->system(qw(ONE THREE);		# use sets ONE and THREE
+
+The following sequence would also use sets ONE and THREE.
+
+   $obj->dfltsets(qw(ONE THREE);
+   $obj->system;
+
+while this would use all parsed options:
+
+   $obj->dfltsets('+');
+   $obj->system;
+
+and this would set the default to none, class-wide:
+
+    Argv->dfltsets('-');
 
 =item * exec()
 
@@ -795,10 +842,8 @@ invokes a shell.
 The automatic use of I<quote> can be turned off via the I<autoquote>
 method (see).
 
-If passed a list, quotes that list; otherwise quotes the operands of
-its instance.  In a void context, replaces its instance's operands with
-the quoted list.  In a list context, returns the quoted list without
-modifying its instance.
+IMPORTANT: this method quotes its argument list IN PLACE. In other
+words, its arguments may be modified.
 
 =item * glob
 
@@ -843,12 +888,12 @@ Sets the debug level. Level 0 (the default) is no debugging, 1 prints
 each command before executing it, and higher levels offer progressively
 more output.
 
-=item * dfltopts
+=item * dfltsets
 
-Sets and/or returns the default set of I<option sets> to be used.
-The default-default is the I<anonymous option set>. I<Note: this
-method takes an B<array reference> as its optional argument and
-returns an array ref as well>.
+Sets and/or returns the default set of I<option sets> to be used in
+building up the command line at execution time.  The default-default is
+the I<anonymous option set>. I<Note: this method takes an B<array
+reference> as its optional argument and returns an array ref as well>.
 
 =item * execwait
 
@@ -901,27 +946,47 @@ As above, for STDERR.
 Defaults for all of the above may be provided in the environment, e.g.
 ARGV_QXARGS=32 or ARGV_STDERR=0;
 
-=head1 IPC::ChildSafe (COPROCESS) SUPPORT
+=item * stdopts
 
-A method I<ipc> is defined which will cause processes to be run
+The attributes above can be set via method calls (e.g.
+C<$obj->dbglevel(1)>) or environment variables (ARGV_DBGLEVEL=1). Use
+of the <$obj->stdopts> method allows them to be parsed from the command
+line as well, e.g. I<myscript -dbglevel 1>. If invoked as a class
+method it causes options of the same names as the methods above to be
+parsed (and removed) from the current C<@ARGV>.  When applied to an
+instance it parses and potentially depletes the current argument vector
+of that object.  In either case it calls the same-named methods with
+the specified values on an instance or class as appropriate. Example:
+
+    Argv->stdopts;
+
+would cause the script to parse the following command line:
+
+    script -noexec 1 -dbglevel 2 -flag1 -flag2 arg1 arg2 arg3 ...
+
+so as to remove the C<-noexec 1 -dbglevel 2> and set the two class attrs.
+
+=head1 IPC::ChildSafe (CO-PROCESS) SUPPORT
+
+A method I<childsafe> is defined which will cause processes to be run
 under control of the IPC::ChildSafe module (see). This keeps one
 instance of a given utility running in the background and feeds
 commands to it rather than forking/exec-ing each time. The utility
 being controlled must conform to the standards defined in the
-IPC::ChildSafe PODs.
+PODs for IPC::ChildSafe.
 
 This method may be used as either a class or instance method; the scope
 of the change in behavior varies accordingly. Parameters passed to this
 method are passed directly to the IPC::ChildSafe constructor. Typical
 usage (sample from ClearCase) would be:
 
-    $self->ipc('cleartool', 'pwd -h', 'Usage: pwd');
+    $self->childsafe('cleartool', 'pwd -h', 'Usage: pwd');
 
 The first arg is the program name, the 2nd must be a cheap command
 providing a well-known one-line output, the 3rd is that output. The
 coprocess can be ended explicitly via:
 
-    $self->ipc(0);
+    $self->childsafe(0);
 
 B<Note: this feature is in alpha state and may change.>
 
@@ -931,9 +996,6 @@ This module is known to work on Solaris 2.5-7 and Windows NT 4.0SP3-5.
 As these two platforms are quite different, there should be no I<major>
 portability issues, but please send reports of tweaks needed for other
 platforms to the address below.
-
-The coprocess support is not available for Windows since IPC::ChildSafe
-hasn't been ported there.
 
 =head1 AUTHOR
 
