@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.00';
+$VERSION = '1.01';
 @ISA = qw(Exporter);
 
 use constant MSWIN	=> $^O =~ /MSWin32|Windows_NT/i;
@@ -235,8 +235,8 @@ sub summary {
     }
     return unless %Argv::Summary;
     my $fmt = "%30s:  %4s\t%s\n";
-    my $str = sprintf $fmt, "$cls SUMMARY", 'Cmds', 'Operands';
-    for (keys %Argv::Summary) {
+    my $str = sprintf $fmt, "$cls Summary", 'Cmds', 'Operands';
+    for (sort keys %Argv::Summary) {
 	my @stats = @{$Argv::Summary{$_}};
 	$cmds += $stats[0];
 	$operands += $stats[1];
@@ -333,6 +333,7 @@ sub argv {
     $self->{AV_OPTS}{''} = [];
     $self->{AV_ARGS} = [];
     $self->prog(shift) if @_;
+    $self->attrs(shift) if ref($_[0]) eq 'HASH';
     $self->opts(@{shift @_}) if ref $_[0];
     $self->args(@_) if @_;
     return $self;
@@ -592,8 +593,9 @@ sub fail {
     return $self;
 }
 
-# Hidden function for printing debug output.
+# Hidden method for printing debug output.
 sub _dbg {
+    my $self = shift;
     my($prefix, $fh, @txt) = @_;
     $class->quote(@txt);
     print $fh "$prefix @txt\n";
@@ -613,9 +615,9 @@ sub exec {
 			    $self->_sets2opts(@_), @{$self->{AV_ARGS}});
 	my($ofd, $efd) = ($self->stdout, $self->stderr);
 	if ($self->noexec) {
-	    _dbg('-', \*STDERR, @cmd);
+	    $self->_dbg('-', \*STDERR, @cmd);
 	} else {
-	    _dbg('+', \*STDERR, @cmd) if $dbg;
+	    $self->_dbg('+', \*STDERR, @cmd) if $dbg;
 	    open(_O, '>&STDOUT');
 	    open(_E, '>&STDERR');
 	    if ($ofd == 2) {
@@ -679,8 +681,8 @@ sub system {
 			    ($childsafe && ref($self) ne $class)) &&
 			    $self->autoquote);
     my @cmd = (@prog, @opts, @args);
-    $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
     if ((ref($self) ne $class) && $childsafe) {
+	$self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
 	my %results = $self->_ipccmd(@cmd);
 	$? = $rc = $results{status} << 8;
 	if ($self->quiet) {
@@ -702,7 +704,7 @@ sub system {
 	# Reset to defaults in dbg mode
 	($ofd, $efd) = (1, 2) if defined($dbg) && $dbg > 2;
 	if ($self->noexec) {
-	    _dbg('-', \*STDERR, @cmd);
+	    $self->_dbg('-', \*STDERR, @cmd);
 	    return 0;
 	}
 	open(_O, '>&STDOUT');
@@ -724,12 +726,15 @@ sub system {
 	my $limit = $self->syxargs;
 	if ($limit && @args) {
 	    while (my @chunk = splice(@args, 0, $limit)) {
+		$self->_addstats("@prog", scalar @chunk)
+						    if defined(%Argv::Summary);
 		@cmd = (@prog, @opts, @chunk);
-		_dbg('+', \*_E, @cmd) if $dbg;
+		$self->_dbg('+', \*_E, @cmd) if $dbg;
 		$rc |= CORE::system @cmd;
 	    }
 	} else {
-	    _dbg('+', \*_E, @cmd) if $dbg;
+	    $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
+	    $self->_dbg('+', \*_E, @cmd) if $dbg;
 	    $rc = CORE::system @cmd;
 	}
 	open(STDOUT, '>&_O'); close(_O);
@@ -759,10 +764,10 @@ sub qx {
     my $dbg = 0;
     my($ofd, $efd) = ($self->stdout, $self->stderr);
     my $noexec = $self->noexec;
-    $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
     if ($childsafe) {
+	$self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
 	if ($noexec) {
-	    _dbg('-', \*STDERR, @cmd);
+	    $self->_dbg('-', \*STDERR, @cmd);
 	} else {
 	    my %results = $self->_ipccmd(@cmd);
 	    $? = $results{status} << 8;
@@ -786,21 +791,24 @@ sub qx {
 	my $limit = $self->qxargs;
 	if ($limit && @args) {
 	    while (my @chunk = splice(@args, 0, $limit)) {
+		$self->_addstats("@prog", scalar @chunk)
+						    if defined(%Argv::Summary);
 		@cmd = (@prog, @opts, @chunk);
 		if ($noexec) {
-		    _dbg('-', \*STDERR, @cmd);
+		    $self->_dbg('-', \*STDERR, @cmd);
 		} else {
-		    _dbg('+', \*STDERR, @cmd) if $dbg;
+		    $self->_dbg('+', \*STDERR, @cmd) if $dbg;
 		    $self->_qx_stderr(\@cmd, $efd);
 		    $self->_qx_stdout(\@cmd, $ofd);
 		    push(@data, CORE::qx(@cmd));
 		}
 	    }
 	} else {
+	    $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
 	    if ($noexec) {
-		_dbg('-', \*STDERR, @cmd);
+		$self->_dbg('-', \*STDERR, @cmd);
 	    } else {
-		_dbg('+', \*STDERR, @cmd) if $dbg;
+		$self->_dbg('+', \*STDERR, @cmd) if $dbg;
 		$self->_qx_stderr(\@cmd, $efd);
 		$self->_qx_stdout(\@cmd, $ofd);
 		@data = CORE::qx(@cmd);

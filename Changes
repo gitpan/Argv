@@ -130,7 +130,7 @@ Revision history for Perl extension Argv.
 
 ----------------------------------------------------------------------------
 
-1.00 Thu May 10 00:10:24 EDT 2001
+1.00 Wed Aug 29 00:10:24 EDT 2001
 	= Test Env: Solaris 8/Win2K SP2/Perl 5.6/CC 4.2
 	- Fixed a bug in the interaction with IPC::ChildSafe;
 	  the status from system() wasn't being correctly returned
@@ -154,3 +154,8 @@ Revision history for Perl extension Argv.
 	  I've moved the version to indicate a released state.
 	  I'll try hard to stay compatible with 1.00 in
 	  subsequent releases.
+
+1.01 Mon Sep  3 21:53:25 EDT 2001
+	- More cleanups of ->summary class method; try to make
+	  invocation and argument counts agree better.
+	- Bugfix in ->argv method.
