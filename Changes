@@ -122,3 +122,8 @@ Revision history for Perl extension Argv.
 
 0.54 Thu Aug 10 11:54:14 EDT 2000
 	- Compatibility for old Data::Dumper builds without Dumpxs.
+
+0.55 Thu Nov 30 15:14:29 EST 2000
+	- Bugfix for case where ->exec returns on UNIX.
+	- Bugfix: previous versions silently removed '--' from @ARGV.
+	- POD work.

@@ -1,11 +1,11 @@
 package Argv;
 
-$VERSION = '0.54';
+$VERSION = '0.55';
 @ISA = qw(Exporter);
 
 use constant MSWIN	=> $^O =~ /MSWin32|Windows_NT/i;
 
-# to support the "FUNCTIONAL INTERFACE"
+# To support the "FUNCTIONAL INTERFACE"
 @EXPORT_OK = qw(system exec qv MSWIN);
 
 use strict;
@@ -137,6 +137,15 @@ __PACKAGE__->gen_exec_method;
     }
 }
 
+# Getopt::Long::GetOptions() respects '--' but strips it, while
+# we want to respect '--' and leave it in. Thus this override.
+sub GetOptions {
+    @ARGV = map {/^--$/ ? qw(=--= --) : $_} @ARGV;
+    my $ret = Getopt::Long::GetOptions(@_);
+    @ARGV = map {/^=--=$/ ? qw(--) : $_} @ARGV;
+    return $ret;
+}
+
 # This method is much like the generated exec methods but has some
 # special-case logic: If called with a param which is true, it starts up
 # a coprocess. If called with false (aka 0) it shuts down the coprocess
@@ -190,24 +199,24 @@ sub attropts {
 	if ($r_argv) {
 	    local @ARGV = @$r_argv;
 	    @ARGV = map {s%^-/%--%; $_} @ARGV if $oldgetopt;
-	    Getopt::Long::GetOptions(\%opt, @flags);
+	    GetOptions(\%opt, @flags);
 	    @$r_argv = @ARGV;
 	} else {
 	    local @ARGV = $self->args;
 	    if (@ARGV) {
 		@ARGV = map {s%^-/%--%; $_} @ARGV if $oldgetopt;
-		Getopt::Long::GetOptions(\%opt, @flags);
+		GetOptions(\%opt, @flags);
 		$self->args(@ARGV);
 	    }
 	}
     } elsif ($r_argv) {
 	local @ARGV = @$r_argv;
 	@ARGV = map {s%^-/%--%; $_} @ARGV if $oldgetopt;
-	Getopt::Long::GetOptions(\%opt, @flags);
+	GetOptions(\%opt, @flags);
 	@$r_argv = @ARGV;
     } elsif (@ARGV) {
 	@ARGV = map {s%^-/%--%; $_} @ARGV if $oldgetopt;
-	Getopt::Long::GetOptions(\%opt, @flags);
+	GetOptions(\%opt, @flags);
     }
     for my $method (keys %opt) { $self->$method($opt{$method}) }
     return $self;
@@ -429,13 +438,13 @@ sub factor {
 	    if ($r_cfg && @$r_cfg) {
 		Getopt::Long->VERSION(2.23); # Configure() returns prev state
 		my $prev = Getopt::Long::Configure(@$r_cfg);
-		Getopt::Long::GetOptions($self->{AV_LKG}{$pset}, @$r_desc);
+		GetOptions($self->{AV_LKG}{$pset}, @$r_desc);
 		Getopt::Long::Configure($prev);
 	    } else {
 		local $Getopt::Long::passthrough = 1;
 		local $Getopt::Long::autoabbrev = 1;
 		local $Getopt::Long::debug = 1 if $self->dbglevel == 5;
-		Getopt::Long::GetOptions($self->{AV_LKG}{$pset}, @$r_desc);
+		GetOptions($self->{AV_LKG}{$pset}, @$r_desc);
 	    }
 	}
 	for (0..$#ARGV) { $vgra{$ARGV[$_]} = $_ }
@@ -599,10 +608,12 @@ sub exec {
 		close(STDERR) if !$efd;
 		warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
 	    }
-	    my $rc = CORE::exec @cmd;
-	    open(STDOUT, '>&_O'); close(_O);
-	    open(STDERR, '>&_E'); close(_E);
-	    return $rc;
+	    if (!CORE::exec(@cmd)) {
+		my $error = "$!";
+		open(STDOUT, '>&_O'); close(_O);
+		open(STDERR, '>&_E'); close(_E);
+		die "$0: $cmd[0]: $error\n";
+	    }
 	}
     }
 }
@@ -1095,7 +1106,7 @@ Reassembles the argv and invokes system(). Return value and value of
 $?, $!, etc. are just as described in I<perlfunc/"system">
 
 Arguments to this method determine which of the parsed option-sets will
-be used in the executed argv. If passed no arguments, C<$obj->system>
+be used in the executed argv. If passed no arguments, C<$obj-E<gt>system>
 uses the value of the 'dfltsets' attribute as the list of desired sets.
 The default value of 'dfltsets' is the anonymous option set.
 
@@ -1123,10 +1134,10 @@ and this would set the default to none class-wide, and then use it:
     $obj->dfltsets({'-' => 1});
     $obj->system;
 
-By default the C<$obj->system> method autoquotes its arguments I<iff>
+By default the C<$obj-E<gt>system> method autoquotes its arguments I<iff>
 the platform is Windows and the arguments are a list, because in this
 case a shell is always used. This behavior can be toggled with
-C<$obj->autoquote>.  I<Note: if and when Perl 5.6 fixes this "bug",
+C<$obj-E<gt>autoquote>.  I<Note: if and when Perl 5.6 fixes this "bug",
 Argv will be changed to examine the value of $]>.
 
 =item * exec()
@@ -1238,7 +1249,7 @@ respectively. Unset by default.
 =item * autoglob
 
 If set, the C<glob()> function is applied to the operands
-(C<$obj->args>) on Windows only. Unset by default.
+(C<$obj-E<gt>args>) on Windows only. Unset by default.
 
 =item * autoquote
 
@@ -1264,7 +1275,7 @@ meaningless.
 
 =item * execwait
 
-If set, C<$obj->exec> on Windows blocks until the new process is
+If set, C<$obj-E<gt>exec> on Windows blocks until the new process is
 finished for a more consistent UNIX-like behavior than the traditional
 Win32 Perl port. Perl just uses the Windows exec() routine, which runs
 the new process in the background. Set by default.
@@ -1289,7 +1300,7 @@ without executing anything.
 =item * qxargs
 
 You can set a maximum number of arguments to be processed at a time,
-allowing you to blithely invoke e.g. C<$obj->qx> on a list of any size
+allowing you to blithely invoke e.g. C<$obj-E<gt>qx> on a list of any size
 without fear of exceeding your shell's limits. A per-platform default
 is set; this method allows it to be changed. A value of 0 suppresses
 the behavior.
@@ -1304,18 +1315,20 @@ Consider that "ls foo bar" produces the same result if broken up into
 
 =item * stdout
 
-Default value is true which has no effect. A false value, e.g:
+Setting this attribute to 0, e.g:
 
     $obj->stdout(0);
 
 causes STDOUT to be closed during invocation of any of the I<execution
 methods> C<system, exec, and qx>, and restored when they finish. A
-fancy (and portable) way of saying 1>/dev/null without needing a
-shell.
+fancy (and portable) way of saying C<1E<gt>/dev/null> without needing a
+shell. A value of 2 is the equivalent of C<1E<gt>&2>.
 
 =item * stderr
 
-As above, for STDERR.
+As above, for STDERR. A value of 1 is the equivalent of C<2E<gt>&1>:
+
+    @alloutput = $obj->stderr(1)->qx;
 
 =back
 
@@ -1324,8 +1337,8 @@ As above, for STDERR.
 =item * attropts
 
 The attributes above can be set via method calls (e.g.
-C<$obj->dbglevel(1)>) or environment variables (ARGV_DBGLEVEL=1). Use
-of the <$obj->attropts> method allows them to be parsed from the command
+C<$obj-E<gt>dbglevel(1)>) or environment variables (ARGV_DBGLEVEL=1). Use
+of the <$obj-E<gt>attropts> method allows them to be parsed from the command
 line as well, e.g. I<myscript -/dbglevel 1>. If invoked as a class
 method it causes options of the same names as the methods above to be
 parsed (and removed) from the current C<@ARGV> and set as class
@@ -1337,12 +1350,20 @@ only. E.g.:
 
 would cause the script to parse the following command line:
 
-    script -/noexec 1 -/dbglevel 2 -flag1 -flag2 arg1 arg2 arg3 ...
+    script -/noexec 1 -/dbglevel=2 -flag1 -flag2 arg1 arg2 arg3 ...
 
 so as to remove the C<-/noexec 1 -/dbglevel 2> and set the two class
 attrs.  The C<-/> prefix is chosen to prevent conflicts with "real"
 flags. Abbreviations are allowed as long as they're unique within the
-set of -/ flags.
+set of -/ flags. Whereas
+
+    $obj->attropts;
+
+would parse the current value of C<$obj-E<gt>args> and run
+
+    $obj->foo(1);
+
+for every instance of C<-/foo=1> found there.
 
 =back
 
