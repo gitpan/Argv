@@ -1,16 +1,16 @@
 package Argv;
 
-use strict;
-use vars qw($VERSION @ISA @EXPORT_OK);
-use Carp;
-require Exporter;
+$VERSION = '0.50';
 @ISA = qw(Exporter);
-$VERSION = '0.49';
+
+use constant MSWIN	=> $^O =~ /win32/i;
 
 # to support the "FUNCTIONAL INTERFACE"
 @EXPORT_OK = qw(system exec qv MSWIN);
 
-use constant MSWIN	=> $^O =~ /win32/i;
+use strict;
+use Carp;
+require Exporter;
 
 # Adapted from perltootc (see): an "eponymous meta-object" implementing
 # "translucent attributes".
@@ -206,7 +206,7 @@ sub attropts {
     for my $method (keys %opt) { $self->$method($opt{$method}) }
     return $self;
 }
-*stdopts = *attropts;	# backward compatibility
+*stdopts = \&attropts;	# backward compatibility
 
 # A class method which returns a summary of operations performed in
 # printable format. Called with a void context to start data-
@@ -240,21 +240,43 @@ sub new {
     my $attrs = shift if ref($_[0]) eq 'HASH';
     my($class, $self);
     if ($class = ref($proto)) {
-	my %clone = %{$proto};	# a shallow copy
-	$self = \%clone;
+	# Make a (deep) clone of the original
+	require Data::Dumper;
+	eval Data::Dumper->new([$proto], ['self'])->Deepcopy(1)->Dumpxs;
     } else {
 	$class = $proto;
 	$self = {};
 	$self->{AV_PROG} = [];
 	$self->{AV_ARGS} = [];
+	bless $self, $class;
+	$self->optset('');
     }
-    bless $self, $class;
-    $self->optset('');
-    $self->argv(@_) if @_;
     $self->attrs($attrs) if $attrs;
+    $self->argv(@_) if @_;
     return $self;
 }
-*clone = *new;
+*clone = \&new;
+
+# Nothing to do here, just avoiding interaction with AUTOLOAD.
+sub DESTROY { }
+
+sub AUTOLOAD {
+    my $self = shift;
+    (my $cmd = $Argv::AUTOLOAD) =~ s/.*:://;
+    return if $cmd eq 'DESTROY';
+    no strict 'refs';
+    # install a new method '$cmd' to avoid autoload next time ...
+    *$cmd = sub {
+	my $self = shift;
+	if (ref $self) {
+	    $self->argv($cmd, @_);
+	} else {
+	    $self->new($cmd, @_);
+	}
+    };
+    # ... then service this request
+    return $self->$cmd(@_);
+}
 
 # Instance methods; most class methods are auto-generated above.
 
@@ -283,7 +305,7 @@ sub argv {
     $self->args(@_) if @_;
     return $self;
 }
-*cmd = *argv;	# backward compatibility
+*cmd = \&argv;	# backward compatibility
 
 # Set or get the 'prog' part of the command line.
 sub prog {
@@ -325,6 +347,7 @@ sub optset {
     my $self = shift;
     for (@_) {
 	my $set = uc $_;
+	next if defined $self->{AV_OPTS}{$set};
 	$self->{AV_OPTS}{$set} = [];
 	$self->{AV_LKG}{$set} = {};
 	my($p_meth, $o_meth, $f_meth) = map { $_ . $set } qw(parse opts flag);
@@ -720,18 +743,18 @@ sub qx {
 	}
     }
     if (wantarray) {
-	print map {"+ <- $_"} @data if $dbg >= 2;
+	print map {"+ <- $_"} @data if @data && $dbg >= 2;
 	chomp(@data) if $self->autochomp;
 	return @data;
     } else {
 	my $data = join('', @data);
-	print "+ <- $data" if $dbg >= 2;
+	print "+ <- $data" if @data && $dbg >= 2;
 	chomp($data) if $self->autochomp;
 	return $data;
     }
 }
 # Can't override qx() in main package so we export an alias instead.
-*qv = *qx;
+*qv = \&qx;
 
 # Internal - provide a warning with std format and caller's context.
 sub warning { my $self = shift; carp("Warning: ${$self->{AV_PROG}}[-1]: ", @_) }
@@ -873,6 +896,17 @@ manipulating it (see below).
 
 All argument-parsing within Argv is done via Getopt::Long.
 
+=head1 AUTOLOADING
+
+Argv employs the same technique made famous by the Shell module
+to allow any command name to be used as a method. E.g.
+
+	$obj->date->exec;
+
+will run the 'date' command. Internally this is translated into
+
+	$obj->argv('date')->exec;
+
 =head1 FUNCTIONAL INTERFACE
 
 Because the extensions to C<system/exec/qx> described here may be
@@ -901,17 +935,18 @@ all of the prog, opt, or arg parts as array refs. E.g.
 Predigested options are placed in the default (anonymous) option set.
 
 The constructor can be used as a class or instance method. In the
-latter case the new object is a shallow clone of its progenitor.  In
-fact 'clone' is aliased to 'new', allowing clones to be created via:
+latter case the new object is a deep (full) clone of its progenitor.
+In fact 'clone' is aliased to 'new', allowing clones to be created
+via:
 
 	my $copy = $orig->clone;
 
-The first argument to C<new()> may be a hash-ref, which will be used to
-set I<execution attributes> at construction time. I.e.:
+The first argument to C<new()> or C<clone()> can be a hash-ref, which
+will be used to set I<execution attributes> at construction time. I.e.:
 
     my $obj = Argv->new({autochomp => 1, stderr => 0}, @ARGV);
 
-It's possible to add the cmd line later:
+you may choose to add the command line later:
 
     my $obj = Argv->new;
     $obj->prog('cat');
@@ -921,7 +956,11 @@ Or
 
     my $obj = Argv->new({autochomp=>1});
     my $motd = $obj->argv(qw(cat /etc/motd))->qx;
-	
+
+Or (using the autoloading interface)
+
+    my $motd = $obj->cat('/etc/motd')->qx;
+
 =head1 METHODS
 
 =head2 INSTANCE METHODS

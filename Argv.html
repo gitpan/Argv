@@ -14,8 +14,10 @@
 	<LI><A HREF="#SYNOPSIS">SYNOPSIS</A>
 	<LI><A HREF="#RAISON_D_ETRE">RAISON D'ETRE</A>
 	<LI><A HREF="#DESCRIPTION">DESCRIPTION</A>
+	<LI><A HREF="#AUTOLOADING">AUTOLOADING</A>
 	<LI><A HREF="#FUNCTIONAL_INTERFACE">FUNCTIONAL INTERFACE</A>
 	<LI><A HREF="#CONSTRUCTOR">CONSTRUCTOR</A>
+	<LI><A HREF="#METHODS">METHODS</A>
 	<UL>
 
 		<LI><A HREF="#INSTANCE_METHODS">INSTANCE METHODS</A>
@@ -169,6 +171,22 @@ All argument-parsing within Argv is done via Getopt::Long.
 
 <P>
 <HR>
+<H1><A NAME="AUTOLOADING">AUTOLOADING</A></H1>
+<P>
+Argv employs the same technique made famous by the Shell module to allow
+any command name to be used as a method. E.g.
+
+<P>
+<PRE>        $obj-&gt;date-&gt;exec;
+</PRE>
+<P>
+will run the 'date' command. Internally this is translated into
+
+<P>
+<PRE>        $obj-&gt;argv('date')-&gt;exec;
+</PRE>
+<P>
+<HR>
 <H1><A NAME="FUNCTIONAL_INTERFACE">FUNCTIONAL INTERFACE</A></H1>
 <P>
 Because the extensions to <CODE>system/exec/qx</CODE> described here may be useful in writing portable programs, they're made
@@ -201,20 +219,20 @@ Predigested options are placed in the default (anonymous) option set.
 
 <P>
 The constructor can be used as a class or instance method. In the latter
-case the new object is a shallow clone of its progenitor. In fact 'clone'
-is aliased to 'new', allowing clones to be created via:
+case the new object is a deep (full) clone of its progenitor. In fact
+'clone' is aliased to 'new', allowing clones to be created via:
 
 <P>
 <PRE>        my $copy = $orig-&gt;clone;
 </PRE>
 <P>
-The first argument to <CODE>new()</CODE> may be a hash-ref, which will be used to set <EM>execution attributes</EM> at construction time. I.e.:
+The first argument to <CODE>new()</CODE> or <CODE>clone()</CODE> can be a hash-ref, which will be used to set <EM>execution attributes</EM> at construction time. I.e.:
 
 <P>
 <PRE>    my $obj = Argv-&gt;new({autochomp =&gt; 1, stderr =&gt; 0}, @ARGV);
 </PRE>
 <P>
-It's possible to add the cmd line later:
+you may choose to add the command line later:
 
 <P>
 <PRE>    my $obj = Argv-&gt;new;
@@ -227,9 +245,16 @@ Or
 <P>
 <PRE>    my $obj = Argv-&gt;new({autochomp=&gt;1});
     my $motd = $obj-&gt;argv(qw(cat /etc/motd))-&gt;qx;
-        
-=head1 METHODS
 </PRE>
+<P>
+Or (using the autoloading interface)
+
+<P>
+<PRE>    my $motd = $obj-&gt;cat('/etc/motd')-&gt;qx;
+</PRE>
+<P>
+<HR>
+<H1><A NAME="METHODS">METHODS</A></H1>
 <P>
 <HR>
 <H2><A NAME="INSTANCE_METHODS">INSTANCE METHODS</A></H2>

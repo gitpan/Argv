@@ -107,3 +107,7 @@ Revision history for Perl extension Argv.
 	- Reworked attropts() to allow prefix_pattern to be specified.
 	- Normalised -dbglevel output somewhat - made normal mode
 	  show returned data at dbglevel >= 2 since ipc mode does so.
+
+0.50 Wed Feb 16 11:52:40 EST 2000
+	- Added experimental AUTOLOAD capability, analogous
+	  to "perldoc Shell".
