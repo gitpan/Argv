@@ -8,38 +8,43 @@ require Exporter;
 
 use constant MSWIN	=> $^O =~ /win32/i;
 
-@EXPORT_OK = qw(system exec); # to support the "FUNCTIONAL INTERFACE"
+@EXPORT_OK = qw(system exec qxargv); # to support the "FUNCTIONAL INTERFACE"
 
-$VERSION = '0.28';
+$VERSION = '0.32';
 
 # Adapted from perltootc (see): an "eponymous meta-object" implementing
 # "translucent attributes".
+# For each key in the hash below, a method is automatically generated.
+# Each of these sets the object attr if called as an instance method or
+# the class attr if called as a class method. They return the instance
+# attr if it's defined, the class attr otherwise. The method name is
+# lower-case; e.g. 'qxargs'. The default values of each attribute comes
+# from the hash value but may be overridden in the environment as shown.
 use vars qw(%Argv);
-{
-   %Argv = (
-      AUTOGLOB		=> $ENV{ARGV_AUTOGLOB} || 0,
-      AUTOQUOTE		=> defined($ENV{ARGV_AUTOQUOTE}) ?
-			    $ENV{ARGV_AUTOQUOTE} : 1,
-      DBGLEVEL		=> $ENV{ARGV_DBGLEVEL} || 0,
-      DFLTOPTS		=> [''],
-      EXECWAIT		=> defined($ENV{ARGV_EXECWAIT}) ?
-			    $ENV{ARGV_EXECWAIT} : 1,
-      NATIVEPATH	=> $ENV{ARGV_NATIVEPATH} || scalar(MSWIN),
-      NOEXEC		=> $ENV{ARGV_NOEXEC} || 0,
-      QXARGS		=> $ENV{ARGV_QXARGS} || (MSWIN ? 16 : 128),
-      STDERR		=> defined($ENV{ARGV_STDERR}) ?
-			    $ENV{ARGV_STDERR} : 1,
-      STDOUT		=> defined($ENV{ARGV_STDOUT}) ?
-			    $ENV{ARGV_STDOUT} : 1,
-   );
+%Argv = (
+   AUTOCHOMP		=> $ENV{ARGV_AUTOCHOMP} || 0,
+   AUTOGLOB		=> $ENV{ARGV_AUTOGLOB} || 0,
+   AUTOQUOTE		=> defined($ENV{ARGV_AUTOQUOTE}) ?
+			 $ENV{ARGV_AUTOQUOTE} : 1,
+   DBGLEVEL		=> $ENV{ARGV_DBGLEVEL} || 0,
+   DFLTOPTS		=> [''],
+   EXECWAIT		=> defined($ENV{ARGV_EXECWAIT}) ?
+			 $ENV{ARGV_EXECWAIT} : 1,
+   NATIVEPATH		=> $ENV{ARGV_NATIVEPATH} || scalar(MSWIN),
+   NOEXEC		=> $ENV{ARGV_NOEXEC} || 0,
+   QXARGS		=> $ENV{ARGV_QXARGS} || (MSWIN ? 16 : 128),
+   STDERR		=> defined($ENV{ARGV_STDERR}) ?
+			 $ENV{ARGV_STDERR} : 1,
+   STDOUT		=> defined($ENV{ARGV_STDOUT}) ?
+			 $ENV{ARGV_STDOUT} : 1,
+   SYSTEMXARGS		=> 0,
+);
 
-   # For each key in the eponymous hash, enter a method in the symtab.
-   # Each of these sets the object attr if called as an instance method or
-   # the class attr if called as a class method. They return the instance
-   # attr if it's defined, the class attr otherwise.
-   my $meta = __PACKAGE__;
+sub addmethod {
+   my $meta = shift;
    no strict 'refs'; # need to evaluate $meta as a symbolic ref
-   for my $datum (keys %{$meta} ) {
+   my @data = @_ ? @_ : keys %{$meta};
+   for my $datum (@data) {
       my $method = lc $datum;
       *$method = sub {
 	 use strict "refs";
@@ -59,6 +64,61 @@ use vars qw(%Argv);
    }
 }
 
+__PACKAGE__->addmethod;
+
+# This class method is much like the above but needs some special
+# logic so can't be auto-generated: If called with a param which is
+# true, it starts up a coprocess. If called with false (aka 0) it
+# shuts down the coprocess and destroys the IPC::ChildSafe object. And
+# if called with no params at all it returns the IPC::ChildSafe object.
+sub ipc {
+   my $self = shift;
+   my $ipc_state = $_[0];
+   my $ipc_obj;
+   if ($ipc_state) {
+      eval { require IPC::ChildSafe };
+      if ($@ =~ /^Can't locate/) {
+	 warn "Warning: IPC::ChildSafe not found - continuing in normal mode\n";
+	 return undef;
+      } elsif ($@) {
+	 warn $@;
+	 return undef;
+      } elsif (defined $IPC::ChildSafe::VERSION) {
+	  my $ver = $IPC::ChildSafe::VERSION;
+	  die "IPC::ChildSafe 2.32 required - this is only $ver" if $ver < 2.32;
+      }
+      $ipc_obj = IPC::ChildSafe->new(@_);
+   }
+   if (ref $self) {
+      if (defined $ipc_state) {
+	 $self->{IPC} = $ipc_obj;
+      } else {
+	 return defined($self->{IPC}) ?
+	       $self->{IPC} : __PACKAGE__->{IPC};
+      }
+   } else {
+      __PACKAGE__->{IPC} = $ipc_obj if defined $ipc_state;
+      return __PACKAGE__->{IPC};
+   }
+}
+
+# A class method which prints a summary of operations performed.
+sub summary {
+    shift;
+    my($cmds, $operands);
+    return unless %Argv::Summary;
+    my $fmt = "%20s: %4s\t%s\n";
+    printf STDERR $fmt, __PACKAGE__ . ' Summary', 'Cmds', 'Operands';
+    for (keys %Argv::Summary) {
+	my @stats = @{$Argv::Summary{$_}};
+	$cmds += $stats[0];
+	$operands += $stats[1];
+	printf STDERR $fmt, $_, $stats[0], $stats[1];
+    }
+    printf STDERR $fmt, 'TOTAL', $cmds, $operands if defined $cmds;
+    %Argv::Summary = ();
+}
+
 # Constructor.
 sub new
 {
@@ -75,7 +135,7 @@ sub new
    return $self;
 }
 
-# Instance methods; class methods are auto-generated above.
+# Instance methods; most class methods are auto-generated above.
 
 sub prog
 {
@@ -207,16 +267,14 @@ sub quote
       s%\n%\\n%g if MSWIN;
       # Special case - leave things that look like redirections alone.
       next if /^\d?(?:<{1,2})|(?:>{1,2})/;
-      # Now quote embedded quotes, then the entire string.
+      # Now quote embedded quotes ...
       $_ =~ s%(\\*)"%$1$1\\"%g;
-      s%\\{1}$%\\\\%;	# quote trailing \ so it won't quote the "
-      $_ = MSWIN ? qq("$_") : qq('$_');
+      # quote trailing \ so it won't quote the " ...
+      s%\\{1}$%\\\\%;
+      # and last the entire string.
+      $_ = qq("$_");
    }
-   if (defined wantarray) {
-       return @argv;
-   } else {
-       $self->args(@argv);
-   }
+   return (defined wantarray) ? @argv : $self->args(@argv);
 }
 
 sub glob
@@ -266,45 +324,22 @@ sub _sets2opts
    return @opts;
 }
 
-sub system
-{
-   return Argv->new(@_)->system if !ref($_[0]);
-   my $self = shift;
-   $self->glob if MSWIN && $self->autoglob;
-   my @cmd = (@{$self->{PROG}}, $self->_sets2opts(@_), @{$self->{ARGS}});
-   @cmd = $self->quote(@cmd)
-	 if (MSWIN && @cmd > 1 && $self->autoquote);
-   my $rc = 0;
-   if ($self->noexec) {
-      print STDERR "+ @cmd\n";
-   } else {
-      $self->dbg("+ @cmd");
-      if (!$self->stdout) {
-	 open(SAVE_STDOUT, ">&STDOUT");
-	 close(STDOUT);
-      }
-      if (!$self->stderr) {
-	 open(SAVE_STDERR, ">&STDERR");
-	 close(STDERR);
-      }
-      $rc = CORE::system @cmd;
-      if (defined(fileno(SAVE_STDOUT))) {
-	 open(STDOUT, ">&SAVE_STDOUT");
-	 close(SAVE_STDOUT);
-      }
-      if (defined(fileno(SAVE_STDERR))) {
-	 open(STDERR, ">&SAVE_STDERR");
-	 close(SAVE_STDERR);
-      }
-   }
-   return $rc;
+sub _addstats {
+    my $self = shift;
+    my($prog, $argcnt) = @_;
+    my $stats = $Argv::Summary{$prog} || [0, 0];
+    $$stats[0]++;
+    $$stats[1] += $argcnt;
+    $Argv::Summary{$prog} = $stats;
 }
 
 sub exec
 {
    return Argv->new(@_)->exec if !ref($_[0]);
    my $self = shift;
-   if (MSWIN && $self->execwait) {
+   if ($self->ipc) {
+      exit($self->system(@_) | $self->ipc->finish);
+   } elsif (MSWIN && $self->execwait) {
       exit $self->system(@_);
    } else {
       my @cmd = (@{$self->{PROG}}, $self->_sets2opts(@_), @{$self->{ARGS}});
@@ -312,67 +347,113 @@ sub exec
 	 print STDERR "+ @cmd\n";
       } else {
 	 $self->dbg("+ @cmd");
-	 if (!$self->stdout) {
-	    open(SAVE_STDOUT, ">&STDOUT");
-	    close(STDOUT);
-	 }
-	 if (!$self->stderr) {
-	    open(SAVE_STDERR, ">&STDERR");
-	    close(STDERR);
-	 }
+	 if (!$self->stdout) { open(_O, ">&STDOUT"); close(STDOUT) }
+	 if (!$self->stderr) { open(_E, ">&STDERR"); close(STDERR) }
 	 my $rc = CORE::exec @cmd;
-	 if (defined(fileno(SAVE_STDOUT))) {
-	    open(STDOUT, ">&SAVE_STDOUT");
-	    close(SAVE_STDOUT);
-	 }
-	 if (defined(fileno(SAVE_STDERR))) {
-	    open(STDERR, ">&SAVE_STDERR");
-	    close(SAVE_STDERR);
-	 }
+	 if (defined(fileno(_O))) { open(STDOUT, ">&_O"); close(_O) }
+	 if (defined(fileno(_E))) { open(STDERR, ">&_E"); close(_E) }
 	 return $rc;
       }
    }
 }
 
-sub qx
+sub system
 {
+   return Argv->new(@_)->system if !ref($_[0]);
    my $self = shift;
+   $self->glob if MSWIN && $self->autoglob;
+   my @prog = @{$self->{PROG}};
    my @opts = $self->_sets2opts(@_);
    my @args = @{$self->{ARGS}};
-   my(@results, @group) = ();
-   my $limit = $self->qxargs || 100000;
-   if (@args) {
-      while (@group = splice(@args, 0, $limit)) {
-	 push(@results, $self->_qx(@opts, @group));
-      }
-   } else {
-      @results = $self->_qx(@opts, @group);
-   }
-   return wantarray ? @results : join('', @results);
-}
-
-sub _qx($@@) {
-   my $self = shift;
-   my(@opts, @group) = @_;
-   my @cmd = (@{$self->{PROG}}, @opts, @group);
-   @cmd = $self->quote(@cmd) if $self->autoquote;
-   my @results;
+   $self->quote(@opts, @args)
+	 if (MSWIN && (@prog + @opts + @args) > 1 && $self->autoquote);
+   my @cmd = (@prog, @opts, @args);
+   my $rc = 0;
    if ($self->noexec) {
       print STDERR "+ @cmd\n";
    } else {
-      $self->dbg("+ @cmd");
-      if (!$self->stderr) {
-	 open(SAVE_STDERR, ">&STDERR");
-	 close(STDERR);
+      if ($self->ipc) {
+	 ($_) = @cmd > 1 ? "@cmd[1..$#cmd]" : ($cmd[0] =~ /^\w+\s*(.*)/);
+	 my %results = $self->ipc->cmd($_);
+	 $? = $results{status} << 8;
+	 print STDOUT @{$results{stdout}} if $self->stdout;
+	 print STDERR @{$results{stderr}} if $self->stderr;
+      } else {
+	 $self->dbg("+ @cmd");
+	 if (!$self->stdout) { open(_O, ">&STDOUT"); close(STDOUT) }
+	 if (!$self->stderr) { open(_E, ">&STDERR"); close(STDERR) }
+	 my $limit = $self->systemxargs;
+	 if ($limit && @args) {
+	    while (my @chunk = splice(@args, 0, $limit)) {
+	       @cmd = (@prog, @opts, @chunk);
+	       $rc |= CORE::system @cmd;
+	    }
+	 } else {
+	    $rc = CORE::system @cmd;
+	 }
+	 if (defined(fileno(_O))) { open(STDOUT, ">&_O"); close(_O) }
+	 if (defined(fileno(_E))) { open(STDERR, ">&_E"); close(_E) }
       }
-      push(@results, CORE::qx(@cmd));
-      if (defined(fileno(SAVE_STDERR))) {
-	 open(STDERR, ">&SAVE_STDERR");
-	 close(SAVE_STDERR);
+      $self->_addstats("@prog", scalar @args);
+   }
+   return $rc;
+}
+
+sub qx
+{
+   my $self = shift;
+   my @prog = @{$self->{PROG}};
+   my @opts = $self->_sets2opts(@_);
+   my @args = @{$self->{ARGS}};
+   $self->quote(@opts, @args)
+	 if ((@prog + @opts + @args) > 1 && $self->autoquote);
+   my @data;
+   if ($self->ipc) {
+      my @cmd = (@prog, @opts, @args);
+      ($_) = @cmd > 1 ? "@cmd[1..$#cmd]" : ($cmd[0] =~ /^\w+\s*(.*)/);
+      my %results = $self->ipc->cmd($_);
+      $? = $results{status} << 8;
+      print STDERR @{$results{stderr}} if $self->stderr;
+      @data = @{$results{stdout}};
+   } else {
+      my $limit = $self->qxargs;
+      if ($limit && @args) {
+	 while (my @chunk = splice(@args, 0, $limit)) {
+	    my @cmd = (@prog, @opts, @chunk);
+	    if ($self->noexec) {
+	       print STDERR "+ @cmd\n";
+	    } else {
+	       $self->dbg("+ @cmd");
+	       if (!$self->stderr) { open(_E, ">&STDERR"); close(STDERR) }
+	       push(@data, CORE::qx(@cmd));
+	       if (defined(fileno(_E))) { open(STDERR, ">&_E"); close(_E) }
+	    }
+	 }
+      } else {
+	 my @cmd = (@prog, @opts, @args);
+	 if ($self->noexec) {
+	    print STDERR "+ @cmd\n";
+	 } else {
+	    $self->dbg("+ @cmd");
+	    if (!$self->stderr) { open(_E, ">&STDERR"); close(STDERR) }
+	    @data = CORE::qx(@cmd);
+	    if (defined(fileno(_E))) { open(STDERR, ">&_E"); close(_E) }
+	 }
       }
    }
-   return @results;
+   $self->_addstats("@prog", scalar @args);
+   if (wantarray) {
+      chomp(@data) if $self->autochomp;
+      return @data;
+   } else {
+      my $data = join('', @data);
+      chomp($data) if $self->autochomp;
+      return $data;
+   }
 }
+
+# Can't override qx() so we export an alias instead.
+sub qxargv { return Argv->new(@_)->qx }
 
 sub warning
 {
@@ -767,7 +848,8 @@ without executing.
 
 =item * qxargs
 
-Gets or sets the number of arguments to process per shell invocation.
+Gets or sets the number of arguments to process per shell invocation
+in the C<qx> method.
 
 =item * stdout
 
@@ -788,14 +870,41 @@ As above, for STDERR.
 =back
 
 Defaults for all of the above may be provided in the environment, e.g.
-ARGV_QXARGS=128 or ARGV_STDERR=0;
+ARGV_QXARGS=32 or ARGV_STDERR=0;
+
+=head1 IPC (COPROCESS) SUPPORT
+
+A method $argv->ipc is defined which will cause processes to be run
+under control of the IPC::ChildSafe module (see). This keeps one
+instance of a given utility running in the background and feeds
+commands to it rather than forking/exec-ing each time. The utility
+being controlled must conform to the standards defined in the
+IPC::ChildSafe PODs.
+
+This method may be used as either a class or instance method; the scope
+of the change in behavior varies accordingly. Parameters passed to this
+method are passed directly to the IPC::ChildSafe constructor. Typical
+usage (sample from ClearCase) would be:
+
+    $self->ipc('cleartool', 'pwd -h', 'Usage: pwd');
+
+The first arg is the program name, the 2nd must be a cheap command
+providing a well-known one-line output, the 3rd is that output. The
+coprocess can be ended explicitly via:
+
+    $self->ipc(0);
+
+B<Note: this feature is in alpha state and may change.>
 
 =head1 PORTING
 
 This module is known to work on Solaris 2.5-7 and Windows NT 4.0SP3-5.
-As these two platforms are quite different, this should take care of
-any I<major> portability issues, but please send reports of tweaks
-needed for other platforms to the address below.
+As these two platforms are quite different, there should be no I<major>
+portability issues, but please send reports of tweaks needed for other
+platforms to the address below.
+
+The coprocess support is not available for Windows since IPC::ChildSafe
+hasn't been ported there.
 
 =head1 AUTHOR
 
@@ -804,8 +913,8 @@ David Boyce <dsb@world.std.com>
 =head1 COPYRIGHT
 
 Copyright (c) 1999 David Boyce. All rights reserved.  This perl program
-is free software; you may redistribute it and/or modify it under the
-same terms as Perl itself.
+is free software; you may redistribute and/or modify it under the same
+terms as Perl itself.
 
 =head1 SEE ALSO
 

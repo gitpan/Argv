@@ -16,3 +16,18 @@ Revision history for Perl extension Argv.
 0.28  Thu Nov 11 22:09:44 EST 1999
 	- Bugfix: if ->qx has options but no args
 	- Removed unused ->script method.
+
+0.29  Sun Nov 14 12:55:37 EST 1999
+	- added Argv->count class method for metrics collection
+
+0.30  Mon Nov 15 12:05:47 EST 1999
+	- Bugfix: change shell quoting on Unix to be closer to Win32
+	  (quote embedded double-quotes, then double-quote the
+	  entire word, rather than try to use single quotes on Unix
+	  and the above on Windows).
+
+0.32  Tue Nov 16 16:01:56 EST 1999
+	- Added an integration with IPC::ChildSafe. This
+	  allows a user to request that commands be run
+	  in the context of a single co-process rather
+	  than doing a new fork/exec for each one.

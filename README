@@ -61,12 +61,14 @@ I'm aware that single-level namespaces are generally deprecated, but
 there are many modern exceptions; see Memoize, Coy, and Interpolation
 among others. I tried hard to fit this into an existing namespace as
 well as soliciting ideas at modules@perl.org. But I couldn't find a
-natural place by myself and nobody was able to suggest one either.
+natural place by myself and nobody on the modules list was able to
+suggest one either.
 
 Considering the alternatives of putting it in a 'wrong' category just
 for the sake of having one, or creating a category for it to live in
 all alone, I decided this was a reasonable case for making an
-exception.  "Argv" is just the natural name for this module IMO. The
-CPAN policies don't say that single-level names are forbidden, simply
-that one should think long and hard before using one. I'm here to say
-that I did so.
+exception.  IMHO "Argv" is just the natural name for this module. The
+CPAN policies don't say that single-level names are forbidden, they
+simply have wording to the effect that one should think long and hard
+before using such a name. I'm here to say that I thought long
+(April->November) and hard.
