@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.04';
+$VERSION = '1.05';
 @ISA = qw(Exporter);
 
 use constant MSWIN	=> $^O =~ /MSWin32|Windows_NT/i;
@@ -177,7 +177,7 @@ sub ipc_childsafe {
 	    $self->{_IPC_CHILDSAFE} = $ipc_obj;
 	    return $self;
 	} else {
-	    return defined($self->{_IPC_CHILDSAFE}) ?
+	    return exists($self->{_IPC_CHILDSAFE}) ?
 			$self->{_IPC_CHILDSAFE} : $class->{_IPC_CHILDSAFE};
 	}
     } else {
@@ -894,6 +894,7 @@ sub qx {
 sub warning {
     my $self = shift;
     (my $prog = $0) =~ s%.*[/\\]%%;
+    no strict 'refs';
     carp('Warning: ', ${$self->{AV_PROG}}[-1] || $prog, ': ', @_);
 }
 

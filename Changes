@@ -180,3 +180,8 @@ Revision history for Perl extension Argv.
 
 1.04 Thu Nov  1 10:52:36 EST 2001
 	- Clean up and release 1.03 work (1.03 was never released).
+
+1.05 Tue Nov 20 21:48:36 EST 2001
+	- Minor cleanup work.
+	- bugfix in ->warning method
+	- bugfix in interface to IPC::ChildSafe
