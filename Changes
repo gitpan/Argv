@@ -34,3 +34,10 @@ Revision history for Perl extension Argv.
 
 0.33  Fri Nov 19 11:45:44 EST 1999
 	- Fixed a bug in Argv->quote method.
+
+0.34  Mon Nov 29 13:03:31 EST 1999
+	- Lots of POD work.
+	- Implemented inheritance of attributes when constructor used
+	  as an instance method.
+	- Renamed exported qxargv() to qv().
+	- Modified many methods to return the object in 'set' mode.

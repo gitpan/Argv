@@ -8,9 +8,9 @@ require Exporter;
 
 use constant MSWIN	=> $^O =~ /win32/i;
 
-@EXPORT_OK = qw(system exec qxargv); # to support the "FUNCTIONAL INTERFACE"
+@EXPORT_OK = qw(system exec qv); # to support the "FUNCTIONAL INTERFACE"
 
-$VERSION = '0.33';
+$VERSION = '0.34';
 
 # Adapted from perltootc (see): an "eponymous meta-object" implementing
 # "translucent attributes".
@@ -40,7 +40,7 @@ use vars qw(%Argv);
    SYSTEMXARGS		=> 0,
 );
 
-sub addmethod {
+sub stdmethod {
    my $meta = shift;
    no strict 'refs'; # need to evaluate $meta as a symbolic ref
    my @data = @_ ? @_ : keys %{$meta};
@@ -52,19 +52,24 @@ sub addmethod {
 	 if (ref $self) {
 	   if (@_) {
 	       $self->{$datum} = shift;
+	       return $self;
 	   } else {
 	       return defined($self->{$datum}) ?
 				 $self->{$datum} : __PACKAGE__->{$datum};
 	   }
 	 } else {
-	   __PACKAGE__->{$datum} = shift if @_;
-	   return __PACKAGE__->{$datum};
+	    if (@_) {
+	       __PACKAGE__->{$datum} = shift;
+	       return $self;
+	    } else {
+	       return __PACKAGE__->{$datum};
+	    }
 	 }
       }
    }
 }
 
-__PACKAGE__->addmethod;
+__PACKAGE__->stdmethod;
 
 # This class method is much like the above but needs some special
 # logic so can't be auto-generated: If called with a param which is
@@ -92,13 +97,17 @@ sub ipc {
    if (ref $self) {
       if (defined $ipc_state) {
 	 $self->{IPC} = $ipc_obj;
+	 return $self;
       } else {
-	 return defined($self->{IPC}) ?
-	       $self->{IPC} : __PACKAGE__->{IPC};
+	 return defined($self->{IPC}) ? $self->{IPC} : __PACKAGE__->{IPC};
       }
    } else {
-      __PACKAGE__->{IPC} = $ipc_obj if defined $ipc_state;
-      return __PACKAGE__->{IPC};
+      if (defined $ipc_state) {
+	  __PACKAGE__->{IPC} = $ipc_obj;
+	  return $self;
+      } else {
+	  return __PACKAGE__->{IPC};
+      }
    }
 }
 
@@ -123,15 +132,27 @@ sub summary {
 sub new
 {
    my $proto = shift;
-   my $class = ref($proto) || $proto;
-   my $self = {};
-   bless $self, $class;
-   $self->optset('');
-   $self->{PROG} = [];
-   $self->{ARGS} = [];
-   $self->prog(ref $_[0] ? @{shift @_} : shift);
+   my($class, $self);
+   if (ref $proto) {
+      $class = ref $proto;
+      $self = $proto;
+      bless $self, $class;
+      $self->optset('');
+      if (@_) {
+	 $self->{PROG} = [];
+	 $self->{ARGS} = [];
+      }
+   } else {
+      $class = $proto;
+      $self = {};
+      bless $self, $class;
+      $self->optset('');
+      $self->{PROG} = [];
+      $self->{ARGS} = [];
+   }
+   $self->prog(shift) if @_;
    $self->opts(@{shift @_}) if ref $_[0];
-   $self->args(ref $_[0] ? @{shift @_} : @_);
+   $self->args(@_) if @_;
    return $self;
 }
 
@@ -140,12 +161,15 @@ sub new
 sub prog
 {
    my $self = shift;
-   $self->{PROG} ||= [];
    if (@_ || !defined(wantarray)) {
       $self->dbg("setting prog to '@_'");
-      @{$self->{PROG}} = @_;
+      @{$self->{PROG}} = ref $_[0] ? @{$_[0]} : @_;
    }
-   return wantarray ? @{$self->{PROG}} : ${$self->{PROG}}[0];
+   if (@_) {
+      return $self;
+   } else {
+      return wantarray ? @{$self->{PROG}} : ${$self->{PROG}}[0];
+   }
 }
 
 sub args
@@ -153,9 +177,13 @@ sub args
    my $self = shift;
    if (@_ || !defined(wantarray)) {
       $self->dbg("setting args to '@_'");
-      @{$self->{ARGS}} = @_;
+      @{$self->{ARGS}} = ref $_[0] ? @{$_[0]} : @_;
    }
-   return @{$self->{ARGS}};
+   if (@_) {
+      return $self;
+   } else {
+      return @{$self->{ARGS}};
+   }
 }
 
 sub optset
@@ -314,7 +342,8 @@ sub _sets2opts
       for (@_) {
 	 $self->warning("Unknown optset '$_'\n") if !$known{$_};
       }
-      @sets = @{$self->dfltopts(\@_)};
+      $self->dfltopts(\@_);
+      @sets = @{$self->dfltopts};
    }
    for my $set (@sets) {
       next unless $self->{OPTS}{$set} && @{$self->{OPTS}{$set}};
@@ -453,7 +482,7 @@ sub qx
 }
 
 # Can't override qx() so we export an alias instead.
-sub qxargv { return Argv->new(@_)->qx }
+sub qv { return Argv->new(@_)->qx }
 
 sub warning
 {
@@ -534,10 +563,11 @@ Argv - Provide an O-O interface to an ARGV
 
 =head1 RAISON D'ETRE
 
-This module presents an O-O approach to command lines, allowing you
-to instantiate an 'argv object' and run it, e.g.:
+This module presents an O-O approach to command lines, allowing you to
+instantiate an 'argv object', manipulate it, and eventually run it,
+e.g.:
 
-    my $ls = Argv->new(qw(ls -l));
+    my $ls = Argv->new('ls', ['-l']));
     my $rc = $ls->system;	# or $ls->exec or $ls->qx
 
 Which raises the immediate question - what value does this mumbo-jumbo
@@ -569,26 +599,24 @@ do-able but leads to spaghetti-ish code and lots of off-by-one errors.
 =item * EXTRA FEATURES
 
 The I<execution methods> C<system, exec, and qx> extend their Perl
-builtin analogues in a few ways.  These features could in theory be
-factored out into a separate module, but at least for now they're
-embedded here:
+builtin analogues in a few ways:
 
 =over 4
 
 =item 1. An xargs-like capability.
 
 You can set a maximum number of arguments to be processed at a time,
-which allows you to blithely invoke C<$obj->qx> on a list of any size
+which allows you to blithely invoke e.g. C<$obj->qx> on a list of any size
 without fear of exceeding your shell's limits.
 
-=item 2. Unix-like exec behavior.
+=item 2. Unix-like exec behavior on Windows.
 
 The Perl builtin exec() on Windows behaves differently from that of
 Unix; it returns to the shell after invoking the new process. In
 contrast, the Argv->exec method blocks until the new process is
 finished, which makes it "feel" like Unix exec().
 
-=item 3. Automatic quoting.
+=item 3. Automatic quoting of system()
 
 Win32 system() always uses the shell, whereas other systems offer
 ways to avoid a shell. The C<$obj->system> method automatically quotes
@@ -602,7 +630,12 @@ this to the application. Perl provides the glob() function for this
 purpose; this module can optionally apply glob() to each operand in the
 argv before execution, automatically.
 
-=item 5. Pathname conversion.
+=item 5. Automatic chomping.
+
+The module can be set to automatically chomp the results of C<$obj->qx>,
+though by default lines are un-chomped.
+
+=item 6. Pathname conversion.
 
 By default, the I<execution methods> will convert pathnames to their
 native format before executing. I.e. pathnames containing / will be
@@ -614,9 +647,9 @@ All of these behaviors can be toggled - see CLASS METHODS below.
 
 =head1 DESCRIPTION
 
-An Argv object treats its argv as 3 separate entities: the I<program>,
-the I<options>, and the I<args>. The I<options> may be futher
-subdivided into named I<option sets> by use of the C<optset>
+An Argv object treats the command line as 3 separate entities: the
+I<program>, the I<options>, and the I<args>. The I<options> may be
+futher subdivided into named I<option sets> by use of the C<optset>
 method. When one of the I<execution methods> is called, the parts are
 reassmbled into a single list and passed to the underlying Perl
 primitive.
@@ -627,21 +660,21 @@ Contrast this with the way Perl handles its own programs, putting the
 By default there's one option set, known as the I<anonymous option
 set>, whose name is the null string. All parsed options go there. The
 advanced user can define more option sets, parse options into them
-according to Getopt::Long-style descriptions, query the parsed values,
-and then reassemble them in any way desired at exec time. Declaring
-an option set automatically declares a set of methods for dealing with
-it (see below).
+according to Getopt::Long-style descriptions, query or set the parsed
+values, and then reassemble them in any way desired at exec time.
+Declaring an option set automatically declares a set of methods for
+dealing with it (see below).
 
 =head1 FUNCTIONAL INTERFACE
 
-Because the extensions to system/exec described here may be useful
-for porting an existing script from Unix to Windows, they're made
-available for export without need of accompanying objects, thus:
+Because the extensions to system/exec/qx described here may be useful
+for aid in writing portable programs, they're made available for export
+without need of accompanying objects, thus:
 
-    use Argv qw(system exec);
+    use Argv qw(system exec qv);
 
 will override the Perl builtins. There is no way to override the
-operator qx() so there's no functional interface to Argv->qx.
+operator C<qx()> so we provide an alias C<qv()>.
 
 =head1 CONSTRUCTOR
 
@@ -652,8 +685,8 @@ calls. During initial construction, the first element of the list is
 separated off as the I<program>; the rest is lumped together as part of
 the I<args> until and unless option parsing is done, in which case
 matched options are shifted into collectors for their various I<option
-sets>. You can also create a "predigested" instance by passing any of
-the prog, opt, or arg parts as array refs. E.g.
+sets>. You can also create a "predigested" instance by passing any or
+all of the prog, opt, or arg parts as array refs. E.g.
 
     Argv->new([qw(cleartool ci)], [qw(-nc -ide)], qw(file1 file2 file3));
 
@@ -661,7 +694,7 @@ Predigested options are placed in the default (anonymous) option set.
 
 =head1 METHODS
 
-Unless otherwise indicated methods are of the traditional get/set
+Unless otherwise indicated, methods are of the traditional get/set
 variety, such that:
 
 =over 4
@@ -669,15 +702,16 @@ variety, such that:
 =item 1. SET
 
 If arguments are passed they become the new value of the referenced
-attribute, and this new value is returned.
+attribute. In this case the object is returned.
 
 =item 2. GET
 
-If no arguments are passed the current value is returned.
+If no arguments are passed the current value of the attribute is
+returned.
 
 =item 3. CLEAR
 
-If no arguments are passed and the method is called in a void context,
+If no arguments are passed I<and> the method is called in a void context,
 the attribute is cleared.
 
 =back
@@ -689,11 +723,11 @@ the attribute is cleared.
 =item * prog()
 
 Returns or sets the name of the program (the C<"argv[0]">). This can be
-a list, e.g. C<qw(cvs update)>.
+a list, e.g. C<qw(rcs co)>.
 
 =item * args()
 
-Returns or sets the list of operands.
+Returns or sets the list of operands (aka arguments).
 
 =item * optset(<list-of-set-names>);
 
@@ -831,9 +865,9 @@ returns an array ref as well>.
 
 =item * execwait
 
-If set, C<$self->exec> blocks until the new process is finished for
-a more consistent Unix-like behavior than the traditional Win32
-Perl port.
+If set, C<$self->exec> on Windows blocks until the new process is
+finished for a more consistent Unix-like behavior than the traditional
+Win32 Perl port.
 
 =item * nativepath
 
@@ -843,13 +877,21 @@ executing. This is set by default on Windows only, thus converting
 
 =item * noexec
 
-Analogous to the C<-n> flag to I<make>; prints what it would execute
-without executing.
+Analogous to the C<-n> flag to I<make>; prints what would be executed
+without executing anything.
 
 =item * qxargs
 
 Gets or sets the number of arguments to process per shell invocation
-in the C<qx> method.
+in the C<qx> method. Setting this value to 0 suppresses the behavior.
+
+=item * systemxargs
+
+Analogous to I<qxargs> but turned off (set to 0) by default. The reason
+for this is that C<qx()> is typically used to I<read> data whereas
+C<system()> is more often used to make stateful changes. Consider
+that "ls foo bar" produces the same result if broken up into "ls foo"
+and "ls bar" but the same cannot be said for "mv foo bar".
 
 =item * stdout
 
@@ -872,9 +914,9 @@ As above, for STDERR.
 Defaults for all of the above may be provided in the environment, e.g.
 ARGV_QXARGS=32 or ARGV_STDERR=0;
 
-=head1 IPC (COPROCESS) SUPPORT
+=head1 IPC::ChildSafe (COPROCESS) SUPPORT
 
-A method $argv->ipc is defined which will cause processes to be run
+A method I<ipc> is defined which will cause processes to be run
 under control of the IPC::ChildSafe module (see). This keeps one
 instance of a given utility running in the background and feeds
 commands to it rather than forking/exec-ing each time. The utility
@@ -918,6 +960,6 @@ terms as Perl itself.
 
 =head1 SEE ALSO
 
-perl(1), Getopt::Long(3)
+perl(1), Getopt::Long(3), IPC::ChildSafe(3)
 
 =cut
