@@ -224,3 +224,7 @@ Revision history for Perl extension Argv.
 
 1.12 Thu Jan 29 12:31:07 EST 2004
 	- Added ->lastresults method for use in exception handlers.
+
+1.13 Fri Oct 29 17:57:01 EDT 2004
+	- Fixed a typo reported by Leo Sager which caused internal
+	  and external redirections to confuse each other.

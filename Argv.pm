@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.12';
+$VERSION = '1.13';
 @ISA = qw(Exporter);
 
 use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
@@ -797,7 +797,7 @@ sub exec {
 	    # Shouldn't get here but defensive programming and all that ...
 	    if ($rc) {
 		my $error = "$!";
-		open(STDOUT, '>&_I'); close(_I);
+		open(STDIN, '>&_I'); close(_I);
 		open(STDOUT, '>&_O'); close(_O);
 		open(STDERR, '>&_E'); close(_E);
 		die "$0: $cmd[0]: $error\n";
@@ -941,7 +941,7 @@ sub system {
 		$rc = CORE::system @cmd;
 	    }
 	}
-	open(STDOUT, '>&_I'); close(_I);
+	open(STDIN, '>&_I'); close(_I);
 	open(STDOUT, '>&_O'); close(_O);
 	open(STDERR, '>&_E'); close(_E);
     }
