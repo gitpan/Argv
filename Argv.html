@@ -109,7 +109,7 @@ independently, and can then put them back together for execution.
 Second, Argv encapsulates and extends <CODE>Getopt::Long</CODE> to allow parsing
 of the argv's options into different <EM>option sets</EM>. This is useful in
 the case of wrapper programs which may, for instance, need to parse out
-one set of flags which direct the behavior of the wrapper itself,
+one set of flags to direct the behavior of the wrapper itself,
 extract a different set and pass them to program X, another for program
 Y, then exec program Z with the remainder.  Doing this kind of thing on
 a basic @ARGV using indexing and splicing is do-able but leads to

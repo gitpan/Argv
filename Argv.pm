@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '0.51';
+$VERSION = '0.52';
 @ISA = qw(Exporter);
 
 use constant MSWIN	=> $^O =~ /MSWin32|Windows_NT/i;
@@ -649,7 +649,7 @@ sub system {
     } else {
 	my $dbg = $self->dbglevel;
 	# Reset to defaults in dbg mode
-	($ofd, $efd) = (1, 2) if $dbg > 2;
+	($ofd, $efd) = (1, 2) if defined($dbg) && $dbg > 2;
 	if ($self->noexec) {
 	    print STDERR "- @cmd\n";
 	    return 0;
@@ -728,7 +728,7 @@ sub qx {
     } else {
 	$dbg = $self->dbglevel;
 	# Reset to defaults in dbg mode
-	($ofd, $efd) = (1, 2) if $dbg > 2;
+	($ofd, $efd) = (1, 2) if defined($dbg) && $dbg > 2;
 	my $limit = $self->qxargs;
 	if ($limit && @args) {
 	    while (my @chunk = splice(@args, 0, $limit)) {
@@ -861,7 +861,7 @@ independently, and can then put them back together for execution.
 Second, Argv encapsulates and extends C<Getopt::Long> to allow parsing
 of the argv's options into different I<option sets>. This is useful in
 the case of wrapper programs which may, for instance, need to parse out
-one set of flags which direct the behavior of the wrapper itself,
+one set of flags to direct the behavior of the wrapper itself,
 extract a different set and pass them to program X, another for program
 Y, then exec program Z with the remainder.  Doing this kind of thing on
 a basic @ARGV using indexing and splicing is do-able but leads to
