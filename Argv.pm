@@ -5,7 +5,7 @@ use vars qw($VERSION @ISA @EXPORT_OK);
 use Carp;
 require Exporter;
 @ISA = qw(Exporter);
-$VERSION = '0.46';
+$VERSION = '0.47';
 
 # to support the "FUNCTIONAL INTERFACE"
 @EXPORT_OK = qw(system exec qv MSWIN);
@@ -599,6 +599,7 @@ sub system {
 
 # Wrapper around Perl's qx(), aka backquotes.
 sub qx {
+    return __PACKAGE__->new(@_)->qx if !ref($_[0]) || ref($_[0]) eq 'HASH';
     my $self = shift;
     my @prog = @{$self->{PROG}};
     my @opts = $self->_sets2opts(@_);
@@ -661,9 +662,8 @@ sub qx {
 	return $data;
     }
 }
-
 # Can't override qx() in main package so we export an alias instead.
-sub qv { return __PACKAGE__->new(@_)->qx }
+*qv = *qx;
 
 # Internal - provide a warning with std format and caller's context.
 sub warning { my $self = shift; carp("Warning: ${$self->{PROG}}[-1]: ", @_); }

@@ -77,3 +77,6 @@ Revision history for Perl extension Argv.
 
 0.46 Sun Jan 16 06:18:11 EST 2000
 	- bugfix in functional interface
+
+0.47 Tue Jan 18 21:09:41 EST 2000
+	- Regularized handling of qx/qv/ccqv/etc
