@@ -5,9 +5,10 @@ use vars qw($VERSION @ISA @EXPORT_OK);
 use Carp;
 require Exporter;
 @ISA = qw(Exporter);
-$VERSION = '0.42';
+$VERSION = '0.45';
 
-@EXPORT_OK = qw(system exec qv); # to support the "FUNCTIONAL INTERFACE"
+# to support the "FUNCTIONAL INTERFACE"
+@EXPORT_OK = qw(system exec qv MSWIN);
 
 use constant MSWIN	=> $^O =~ /win32/i;
 
@@ -26,53 +27,107 @@ use vars qw(%Argv);
     AUTOGLOB	=> $ENV{ARGV_AUTOGLOB} || 0,
     AUTOQUOTE	=> defined($ENV{ARGV_AUTOQUOTE}) ? $ENV{ARGV_AUTOQUOTE} : 1,
     DBGLEVEL	=> $ENV{ARGV_DBGLEVEL} || 0,
-    DFLTSETS	=> [''],
+    DFLTSETS	=> {'' => 1},
     EXECWAIT	=> defined($ENV{ARGV_EXECWAIT}) ? $ENV{ARGV_EXECWAIT} : 1,
     PATHNORM	=> $ENV{ARGV_PATHNORM} || scalar(MSWIN),
     NOEXEC	=> $ENV{ARGV_NOEXEC} || 0,
     QXARGS	=> $ENV{ARGV_QXARGS} || (MSWIN ? 16 : 128),
-    STDERR	=> defined($ENV{ARGV_STDERR}) ? $ENV{ARGV_STDERR} : 1,
     STDOUT	=> defined($ENV{ARGV_STDOUT}) ? $ENV{ARGV_STDOUT} : 1,
-    SYSTEMXARGS	=> 0,
+    STDERR	=> defined($ENV{ARGV_STDERR}) ? $ENV{ARGV_STDERR} : 2,
+    SYSTEMXARGS	=> $ENV{ARGV_SYSTEMXARGS} || 0,
 );
 
 sub stdmethod {
     my $meta = shift;
     no strict 'refs'; # need to evaluate $meta as a symbolic ref
     my @data = @_ ? @_ : keys %{$meta};
-    for my $datum (@data) {
-	my $method = lc $datum;
+    for my $attr (@data) {
+	my $method = lc $attr;
 	*$method = sub {
-	    use strict "refs";
 	    my $self = shift;
+	    my $class = __PACKAGE__;
 	    # In null context with no args, set boolean value 'on'.
-	    if (!@_ && !defined(wantarray)) {
-		@_ = (1);
-	    }
+	    @_ = (1) if !@_ && !defined(wantarray);
+	    my $ret = 0;
 	    if (ref $self) {
 		if (@_) {
-		    $self->{$datum} = shift;
-		    return $self;
+		    if (defined(wantarray)) {
+			if (ref $self->{$attr}) {
+			    unshift(@{$self->{$attr}}, shift);
+			} elsif (defined $self->{$attr}) {
+			    $self->{$attr} = [shift, $self->{$attr}];
+			} else {
+			    $self->{$attr} = [shift];
+			}
+			return $self;
+		    } else {
+			$self->{$attr} = shift;
+			return undef;
+		    }
 		} else {
-		    return defined($self->{$datum}) ?
-		    $self->{$datum} : __PACKAGE__->{$datum};
+		    $ret = defined($self->{$attr}) ?
+					    $self->{$attr} : $class->{$attr};
 		}
 	    } else {
 		if (@_) {
-		    __PACKAGE__->{$datum} = shift;
-		    return $self;
+		    if (defined(wantarray)) {
+			if (ref $class->{$attr}) {
+			    unshift(@{$class->{$attr}}, shift);
+			} else {
+			    $class->{$attr} = [shift, $class->{$attr}];
+			}
+			return $self;
+		    } else {
+			$class->{$attr} = shift;
+			return $self;
+		    }
 		} else {
-		    return __PACKAGE__->{$datum};
+		    $ret = $class->{$attr};
 		}
 	    }
+	    if (ref($ret) eq 'ARRAY') {
+		my $stack = $ret;
+		$ret = shift @$stack;
+		if (ref $self) {
+		    if (@$stack) {
+			$self->{$attr} = shift @$stack;
+		    } else {
+			delete $self->{$attr};
+		    }
+		} else {
+		    $self->{$attr} = shift @$stack;
+		}
+	    }
+	    return $ret;
 	}
     }
 }
 
 __PACKAGE__->stdmethod;
 
-# This class method is much like the above but needs some special
-# logic so can't be auto-generated: If called with a param which is
+{
+    my %streams = (stdout => 1, stderr => 2);
+    for my $name (keys %streams) {
+	my $method = "_qx_$name";
+	no strict 'refs';
+	*$method = sub {
+	    my $self = shift;
+	    my $r_cmd = shift;
+	    my $nfd = shift;
+	    my $fd = $streams{$name};
+	    if ($nfd == 0) {
+		push(@$r_cmd, "$fd>" . (MSWIN ? 'NUL' : '/dev/null'));
+	    } elsif ($nfd == (3-$fd)) {
+		push(@$r_cmd, sprintf "%d>&%d", $fd, 3-$fd);
+	    } elsif ($nfd != $fd) {
+		warn "Error: illegal value '$nfd' for $name";
+	    }
+	};
+    }
+}
+
+# This method is much like the generated ones above but needs
+# some special-case logic: If called with a param which is
 # true, it starts up a coprocess. If called with false (aka 0) it
 # shuts down the coprocess and destroys the IPC::ChildSafe object. And
 # if called with no params at all it returns the IPC::ChildSafe object.
@@ -104,7 +159,7 @@ sub ipc_childsafe {
     }
 }
 
-sub stdopts {
+sub attropts {
     my $self = shift;
     my $r_argv = ref $_[0] ? shift : undef;
     require Getopt::Long;
@@ -142,6 +197,7 @@ sub stdopts {
     for my $method (keys %opt) { $self->$method($opt{$method}) }
     return $self;
 }
+*stdopts = *attropts;	# backward compatibility
 
 # A class method which returns a summary of operations performed in
 # printable format. Call it with a void context to start data-
@@ -172,6 +228,7 @@ sub summary {
 # Constructor.
 sub new {
     my $proto = shift;
+    my $attrs = shift if ref($_[0]) eq 'HASH';
     my($class, $self);
     if ($class = ref($proto)) {
 	my %clone = %{$proto};	# a shallow copy
@@ -185,6 +242,11 @@ sub new {
     bless $self, $class;
     $self->optset('');
     $self->cmd(@_) if @_;
+    if ($attrs) {
+	for my $key (keys %$attrs) {
+	    $self->$key($attrs->{$key});
+	}
+    }
     return $self;
 }
 
@@ -204,8 +266,8 @@ sub cmd {
 sub prog {
     my $self = shift;
     if (@_) {
-	my @prog = ref $_[0] ? @{$_[0]} : @_;
-	@{$self->{PROG}} = @prog;
+	my @prg = ref $_[0] ? @{$_[0]} : @_;
+	@{$self->{PROG}} = @prg;
     } elsif (!defined(wantarray)) {
 	@{$self->{PROG}} = ();
     }
@@ -369,7 +431,7 @@ sub _sets2opts {
     my $self = shift;
     my(@sets, @opts);
     if (! @_) {
-	@sets = @{$self->dfltsets};
+	@sets = keys %{$self->dfltsets};
     } elsif ($_[0] eq '-') {
 	@sets = ();
     } elsif ($_[0] eq '+') {
@@ -388,11 +450,11 @@ sub _sets2opts {
 
 sub _addstats {
     my $self = shift;
-    my($prog, $argcnt) = @_;
-    my $stats = $Argv::Summary{$prog} || [0, 0];
+    my($prg, $argcnt) = @_;
+    my $stats = $Argv::Summary{$prg} || [0, 0];
     $$stats[0]++;
     $$stats[1] += $argcnt;
-    $Argv::Summary{$prog} = $stats;
+    $Argv::Summary{$prg} = $stats;
 }
 
 sub exec {
@@ -404,15 +466,28 @@ sub exec {
 	exit $self->system(@_);
     } else {
 	my @cmd = (@{$self->{PROG}}, $self->_sets2opts(@_), @{$self->{ARGS}});
+	my($ofd, $efd) = ($self->stdout, $self->stderr);
 	if ($self->noexec) {
 	    print STDERR "- @cmd\n";
 	} else {
 	    $self->dbg("+ @cmd");
-	    if (!$self->stdout) { open(_O, ">&STDOUT"); close(STDOUT) }
-	    if (!$self->stderr) { open(_E, ">&STDERR"); close(STDERR) }
+	    open(_O, '>&STDOUT');
+	    open(_E, '>&STDERR');
+	    if ($ofd == 2) {
+		open(STDOUT, '>&STDERR') || warn "Can't dup stdout";
+	    } elsif ($ofd != 1) {
+		close(STDOUT) if !$ofd;
+		warn "Warning: illegal value '$ofd' for stdout" if $ofd > 2;
+	    }
+	    if ($efd == 1) {
+		open(STDERR, '>&STDOUT') || warn "Can't dup stderr";
+	    } elsif ($efd != 2) {
+		close(STDERR) if !$efd;
+		warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
+	    }
 	    my $rc = CORE::exec @cmd;
-	    if (defined(fileno(_O))) { open(STDOUT, ">&_O"); close(_O) }
-	    if (defined(fileno(_E))) { open(STDERR, ">&_E"); close(_E) }
+	    open(STDOUT, '>&_O'); close(_O);
+	    open(STDERR, '>&_E'); close(_E);
 	    return $rc;
 	}
     }
@@ -439,7 +514,7 @@ sub ipccmd {
 sub system {
     return __PACKAGE__->new(@_)->system if !ref($_[0]);
     my $self = shift;
-    $self->glob if MSWIN && $self->autoglob;
+    $self->glob if $self->autoglob;
     my @prog = @{$self->{PROG}};
     my @opts = $self->_sets2opts(@_);
     my @args = @{$self->{ARGS}};
@@ -448,18 +523,41 @@ sub system {
     @cmd = $self->quote(@prog, @opts, @args)
 	if (((MSWIN && @cmd > 1) || $self->ipc_childsafe) && $self->autoquote);
     my $rc = 0;
+    my($ofd, $efd) = ($self->stdout, $self->stderr);
     if ($self->noexec) {
 	print STDERR "- @cmd\n";
     } else {
 	if ($self->ipc_childsafe) {
 	    my %results = $self->ipccmd(@cmd);
 	    $? = $results{status} << 8;
-	    print STDOUT @{$results{stdout}} if $self->stdout;
-	    print STDERR @{$results{stderr}} if $self->stderr;
+	    if ($ofd == 2) {
+		print STDERR @{$results{stdout}} if @{$results{stdout}};
+	    } else {
+		warn "Warning: illegal value '$ofd' for stdout" if $ofd > 2;
+		print STDOUT @{$results{stdout}} if $ofd && @{$results{stdout}};
+	    }
+	    if ($efd == 1) {
+		print STDOUT @{$results{stderr}} if @{$results{stderr}};
+	    } else {
+		warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
+		print STDERR @{$results{stderr}} if $efd && @{$results{stderr}};
+	    }
 	} else {
 	    $self->dbg("+ @cmd");
-	    if (!$self->stdout) { open(_O, ">&STDOUT"); close(STDOUT) }
-	    if (!$self->stderr) { open(_E, ">&STDERR"); close(STDERR) }
+	    open(_O, '>&STDOUT');
+	    open(_E, '>&STDERR');
+	    if ($ofd == 2) {
+		open(STDOUT, '>&STDERR') || warn "Can't dup stdout";
+	    } elsif ($ofd != 1) {
+		close(STDOUT) if !$ofd;
+		warn "Warning: illegal value '$ofd' for stdout" if $ofd > 2;
+	    }
+	    if ($efd == 1) {
+		open(STDERR, '>&STDOUT') || warn "Can't dup stderr";
+	    } elsif ($efd != 2) {
+		close(STDERR) if !$efd;
+		warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
+	    }
 	    my $limit = $self->systemxargs;
 	    if ($limit && @args) {
 		while (my @chunk = splice(@args, 0, $limit)) {
@@ -469,8 +567,8 @@ sub system {
 	    } else {
 		$rc = CORE::system @cmd;
 	    }
-	    if (defined(fileno(_O))) { open(STDOUT, ">&_O"); close(_O) }
-	    if (defined(fileno(_E))) { open(STDERR, ">&_E"); close(_E) }
+	    open(STDOUT, '>&_O'); close(_O);
+	    open(STDERR, '>&_E'); close(_E);
 	}
 	$self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
     }
@@ -488,10 +586,22 @@ sub qx {
     @cmd = $self->quote(@prog, @opts, @args)
 	if ((@cmd > 1 || $self->ipc_childsafe) && $self->autoquote);
     my @data;
+    my($ofd, $efd) = ($self->stdout, $self->stderr);
     if ($self->ipc_childsafe) {
 	my %results = $self->ipccmd(@cmd);
 	$? = $results{status} << 8;
-	print STDERR @{$results{stderr}} if $self->stderr;
+	if ($ofd == 1) {
+	    push(@data, @{$results{stdout}});
+	} else {
+	    print STDERR @{$results{stdout}} if $ofd == 2;
+	    warn "Warning: illegal value '$ofd' for stdout" if $ofd > 2;
+	}
+	if ($efd == 1) {
+	    push(@data, @{$results{stderr}});
+	} else {
+	    print STDERR @{$results{stderr}} if $efd;
+	    warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
+	}
 	@data = @{$results{stdout}};
     } else {
 	my $limit = $self->qxargs;
@@ -502,9 +612,9 @@ sub qx {
 		    print STDERR "- @cmd\n";
 		} else {
 		    $self->dbg("+ @cmd");
-		    if (!$self->stderr) { open(_E, ">&STDERR"); close(STDERR) }
+		    $self->_qx_stderr(\@cmd, $efd);
+		    $self->_qx_stdout(\@cmd, $ofd);
 		    push(@data, CORE::qx(@cmd));
-		    if (defined(fileno(_E))) { open(STDERR, ">&_E"); close(_E) }
 		}
 	    }
 	} else {
@@ -512,9 +622,9 @@ sub qx {
 		print STDERR "- @cmd\n";
 	    } else {
 		$self->dbg("+ @cmd");
-		if (!$self->stderr) { open(_E, ">&STDERR"); close(STDERR) }
+		$self->_qx_stderr(\@cmd, $efd);
+		$self->_qx_stdout(\@cmd, $ofd);
 		@data = CORE::qx(@cmd);
-		if (defined(fileno(_E))) { open(STDERR, ">&_E"); close(_E) }
 	    }
 	}
     }
@@ -619,7 +729,7 @@ The answer comes in a few parts:
 First, Argv recognizes the underlying property of an arg vector, which
 is that it begins with a program name potentially followed by options,
 then operands. An Argv object factors a raw argv into these three
-groups and provides accessor methods to allow operations on each group
+groups, provides accessor methods to allow operations on each group
 independently, and can then put them back together for execution.
 
 
@@ -643,7 +753,7 @@ builtin analogues in a few ways, for example:
 
 =item 1. An xargs-like capability.
 
-=item 2. Unix-like C<exec()> behavior on Windows.
+=item 2. UNIX-like C<exec()> behavior on Windows.
 
 =item 3. Automatic quoting of C<system()> on Win32 and C<qx()> everywhere
 
@@ -658,7 +768,7 @@ builtin analogues in a few ways, for example:
 =back
 
 All of these behaviors can be toggled, either as class or instance
-attributes. See STANDARD METHODS below.
+attributes. See EXECUTION ATTRIBUTES below.
 
 =head1 DESCRIPTION
 
@@ -713,6 +823,11 @@ The constructor can be used as a class or instance method. When a new
 instance is generated from an existing one, the new one is a copy
 of its progenitor.
 
+The first argument to C<new()> may be a hash-ref, which will be used to
+set I<execution attributes> at construction time. I.e.:
+
+	my $argv = Argv->new({autochomp => 1, stderr => 0}, @ARGV);
+
 =head1 METHODS
 
 =head2 INSTANCE METHODS
@@ -738,7 +853,9 @@ C<parseI<NAME>(), optsI<NAME>(), and flagI<NAME>()>. These methods are
 described below: note that the I<anonymous option set> (see I<OPTION
 SETS>) is predefined, so the methods C<parse(), opts(), and flag()> are
 always available.  Most users won't need to define any other sets.
-Note that option-set names are forced to upper-case.
+Note that option-set names are forced to upper case. E.g.:
+
+	$obj->optset('FOO');
 
 =item * parseI<NAME>(...option-descriptions...)
 
@@ -746,80 +863,20 @@ Takes a list of option descriptions and uses Getopt::Long::GetOptions()
 to parse them out of the current argv B<and into option set I<NAME>>.
 The opt-descs are exactly as supported by parseI<FOO>() are exactly the
 same as those described for Getopt::Long, except that no linkage
-argument is allowed.
+argument is allowed. E.g.:
+
+	$obj->parseFOO(qw(file=s list=s@ verbose));
 
 =item * optsI<NAME>()
 
 Returns or sets the list of options in the B<option set I<NAME>>.
 
-=item * flagI<name>()
+=item * flagI<NAME>()
 
-Returns or sets the value of flag I<name> in the appropriate optset.
+Sets or gets the value of a flag in the appropriate optset, e.g.:
 
-=item * system([<optset-list>])
-
-Reassembles the complete argv and invokes system() on it. Return value
-and value of $?, $!, etc. are just as described in L<perlfunc/"system">
-
-Arguments to this method determine which of the parsed option-sets will
-be used in the executed argv. If passed no arguments, C<$obj->system>
-uses the value of the 'dfltsets' attribute as the list of desired sets.
-The default value of 'dfltsets' is the anonymous option set.
-
-An option set may be requested by passing its name (with an optional
-leading '+') or explicitly rejected by using its name with a leading
-'-'. Thus, given the existence of option sets I<ONE, TWO, and THREE>,
-the following are legal:
-
-   $obj->system;			# use the anonymous set only
-   $obj->system('+');			# use all option sets
-   $obj->system(qw(ONE THREE);		# use sets ONE and THREE
-
-The following sequence would also use sets ONE and THREE.
-
-   $obj->dfltsets(qw(ONE THREE);
-   $obj->system;
-
-while this would use all parsed options:
-
-   $obj->dfltsets('+');
-   $obj->system;
-
-and this would set the default to none class-wide, and then use it:
-
-    Argv->dfltsets('-');
-    $obj->system;
-
-By default the C<$obj->system> method autoquotes its arguments I<iff>
-the platform is Windows and the arguments are a list, because in this
-case a shell is always used. This behavior can be toggled with
-C<$obj->autoquote>.  I<Note: if and when Perl 5.6 fixes this, Argv will
-be changed to examine the value of $]>.
-
-=item * exec()
-
-Similar to I<system> above, but never returns. On Windows, it blocks
-until the new process finishes for a more Unix-like behavior than
-the I<exec> implemented by the C runtime library on Windows, if
-the B<execwait> attribute is set. This is actually implemented as
-
-	exit $obj->system(LIST);
-
-and thus all C<system> shell-quoting issues apply
-
-Option sets are handled as described in I<system> above.
-
-=item * qx()
-
-Same semantics as described in L<perlfunc/"qx"> but has the capability
-to process only a set number of arguments at a time to avoid exceeding
-the shell's line-length limit. This value is settable with the
-I<qxargs> method.
-
-Also, if I<autoquote> is set the arguments are quoted to protect them
-against the platform-standard shell I<on all platforms>. 
-
-Option sets are handled as described in I<system> above.
+	print "blah blah blah\n" if $obj->flagFOO('verbose');
+	$obj->flagFOO('verbose' => 1);
 
 =item * extract
 
@@ -851,29 +908,134 @@ method (vide infra).
 
 =back
 
-=head2 STANDARD METHODS
+=head2 EXECUTION METHODS
 
-The following are auto-generated accessor methods of the classic
-get/set variety; if arguments are passed they become the new value of
-the eponymous attribute, while the current value is returned whether
-said attribute was changed or not.
+The three methods below are direct analogues of the Perl builtins.
+They simply reassemble a command line from the I<prog>, I<opts>, and
+I<args> parts according to the option-set rules described below and
+invoke their builtin equivalent on it.
 
-These also have the property that they may be used as either class or
-instance methods. If used as an instance method the attribute is set
-only on that object; if used as a class method it sets or gets the
-default for all instances which haven't overridden it.  This is an
-implementation of I<translucent attributes> as described in Tom
-Christiansen's I<perltootc> tutorial.
+=over
 
-If called in a void context with no parameters, the boolean attribute
-is turned I<on>. Thus these are both I<set> invocations:
+=item * system([<optset-list>])
 
-	$obj->autochomp(1);
-	$obj->autochomp;
+Reassembles the argv and invokes system(). Return value and value of
+$?, $!, etc. are just as described in L<perlfunc/"system">
 
-while this is a I<get> of the I<class> attribute:
+Arguments to this method determine which of the parsed option-sets will
+be used in the executed argv. If passed no arguments, C<$obj->system>
+uses the value of the 'dfltsets' attribute as the list of desired sets.
+The default value of 'dfltsets' is the anonymous option set.
 
-	my $chomping = Argv->autochomp;
+An option set may be requested by passing its name (with an optional
+leading '+') or explicitly rejected by using its name with a leading
+'-'. Thus, given the existence of option sets I<ONE, TWO, and THREE>,
+the following are legal:
+
+    $obj->system;			# use the anonymous set only
+    $obj->system('+');			# use all option sets
+    $obj->system(qw(ONE THREE);		# use sets ONE and THREE
+
+The following sequence would also use sets ONE and THREE.
+
+    $obj->dfltsets({ONE => 1, THREE => 1});
+    $obj->system;
+
+while this would use all parsed options:
+
+    $obj->dfltsets({'+' => 1});
+    $obj->system;
+
+and this would set the default to none class-wide, and then use it:
+
+    $obj->dfltsets({'-' => 1});
+    $obj->system;
+
+By default the C<$obj->system> method autoquotes its arguments I<iff>
+the platform is Windows and the arguments are a list, because in this
+case a shell is always used. This behavior can be toggled with
+C<$obj->autoquote>.  I<Note: if and when Perl 5.6 fixes this "bug",
+Argv will be changed to examine the value of $]>.
+
+=item * exec()
+
+Similar to I<system> above, but never returns. On Windows, it blocks
+until the new process finishes for a more UNIX-like behavior than
+the I<exec> implemented by the C runtime library on Windows, if
+the B<execwait> attribute is set. This is actually implemented as
+
+    exit $obj->system(LIST);
+
+and thus all C<system> shell-quoting issues apply
+
+Option sets are handled as described in I<system> above.
+
+=item * qx()
+
+Same semantics as described in L<perlfunc/"qx"> but has the capability
+to process only a set number of arguments at a time to avoid exceeding
+the shell's line-length limit. This value is settable with the
+I<qxargs> method.
+
+Also, if I<autoquote> is set the arguments are quoted to protect them
+against the platform-standard shell I<on all platforms>. 
+
+Option sets are handled as described in I<system> above.
+
+=back
+
+=head2 EXECUTION ATTRIBUTES
+
+The behavior of the I<execution methods> C<system, exec, and qx> is
+governed by a set of I<execution attributes>, which are in turn
+manipulated via a set of eponymous methods. These methods are
+auto-generated and thus share certain common characteristics:
+
+=over
+
+=item * Translucency
+
+They can all be invoked as class or instance methods.  If used as an
+instance method the attribute is set only on that object; if used on
+the class it sets or gets the default for all instances which haven't
+overridden it.  This is inspired by the section on I<translucent
+attributes> in Tom Christiansen's I<perltootc> tutorial.
+
+=item * Class Defaults
+
+Each attribute has a default which may be overridden with an
+environment variable by prepending the class name, e.g. ARGV_QXARGS=256
+or ARGV_STDERR=0;
+
+=item * Context Sensitivity
+
+The attribute value is always a scalar. If a value is passed it
+becomes the new value of the attribute and the object or class is
+returned. If no value is passed I<and there is a valid return
+context>, the current value is returned. In a void context with no
+parameter, the attribute value is set to 1.
+
+=item * Stickiness
+
+A subtlety: if an I<execution attribute> is set in a void context, that
+attribute is I<"sticky">, i.e. it retains its state until explicitly
+changed. But if I<a new value is provided> and the context is not void,
+the new value is B<temporary>. It lasts until the next I<execution
+method> (C<system, exec, or qx>) invocation, after which the previous
+value is restored. This feature allows locutions like this:
+
+	$argv->cmd('date')->stderr(1)->system;
+
+Assuming that the C<$argv> object already exists and has a set of
+attributes; we can override one of them at execution time.  More
+examples:
+
+	$argv->stdout(1);          # set attribute, sticky
+	$argv->stdout;             # same as above
+	$foo = $argv->stdout;      # get attribute value
+	$obj = $argv->stdout(1);   # set to 1 (temporary), return $argv
+
+=back
 
 =over
 
@@ -908,13 +1070,15 @@ more output.
 
 Sets and/or returns the default set of I<option sets> to be used in
 building up the command line at execution time.  The default-default is
-the I<anonymous option set>. I<Note: this method takes an B<array
-reference> as its optional argument and returns an array ref as well>.
+the I<anonymous option set>. I<Note: this method takes a B<hash
+reference> as its optional argument and returns a hash ref as well>.
+The selected sets are represented by the hash keys; the values are
+meaningless.
 
 =item * execwait
 
 If set, C<$self->exec> on Windows blocks until the new process is
-finished for a more consistent Unix-like behavior than the traditional
+finished for a more consistent UNIX-like behavior than the traditional
 Win32 Perl port. Perl just uses the Windows exec() routine, which runs
 the new process in the background. Set by default.
 
@@ -949,7 +1113,7 @@ the same cannot be said for "mv foo bar".
 
 Default value is true which has no effect. A false value, e.g:
 
-   $obj->stdout(0);
+    $obj->stdout(0);
 
 causes STDOUT to be closed during invocation of any of the I<execution
 methods> C<system, exec, and qx>, and restored when they finish. A
@@ -962,16 +1126,13 @@ As above, for STDERR.
 
 =back
 
-Defaults for all of the above may be provided in the environment by
-prepending the class name, e.g. ARGV_QXARGS=32 or ARGV_STDERR=0;
-
 =over
 
-=item * stdopts
+=item * attropts
 
 The attributes above can be set via method calls (e.g.
 C<$obj->dbglevel(1)>) or environment variables (ARGV_DBGLEVEL=1). Use
-of the <$obj->stdopts> method allows them to be parsed from the command
+of the <$obj->attropts> method allows them to be parsed from the command
 line as well, e.g. I<myscript -/dbglevel 1>. If invoked as a class
 method it causes options of the same names as the methods above to be
 parsed (and removed) from the current C<@ARGV> and set as class
@@ -979,7 +1140,7 @@ attributes.  As an instance method it parses and potentially depletes
 the current argument vector of that object, and sets instance attributes
 only. E.g.:
 
-    Argv->stdopts;
+    Argv->attropts;
 
 would cause the script to parse the following command line:
 

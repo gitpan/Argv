@@ -67,3 +67,10 @@ Revision history for Perl extension Argv.
 	- POD work
 	- Fixed quoting bug.
 	- Defer errors to caller in ipc_childsafe call.
+
+0.45 Fri Jan 14 21:42:12 EST 2000
+	- Added anon-hash metthod of setting attrs
+	- Implemented non-sticky context-sensitive attrs.
+	- Implemented ->stdout(2) and ->stderr(1), etc.
+	- Renamed stdopts method to attropts.
+	- push(@EXPORT_OK, MSWIN) constant.

@@ -1,8 +1,6 @@
 # Before `make install' is performed this script should be runnable with
 # `make test'. After `make install' it should work as `perl test.pl'
 
-######################### We start with some black magic to print on failure.
-
 my $final = 0;
 
 # Automatically generates an ok/nok msg, incrementing the test number.
@@ -20,11 +18,8 @@ BEGIN {
 use Argv;
 $final += printok(1);
 
-######################### End of black magic.
-
-# Insert your test code below (better if it prints "ok 13"
-# (correspondingly "not ok 13") depending on the success of chunk 13
-# of the test code):
+# Make sure output arrives synchronously.
+select(STDERR); $| = 1; select(STDOUT); $| = 1;
 
 print "+ Testing basic construction and execution ...\n";
 my $pl = Argv->new($^X, '-v');
@@ -55,9 +50,12 @@ $ld->system('-');
 $final += printok($? == 0);
 $ld->dbglevel(0);
 
-$ld->dfltsets(['-']);
+$ld->dfltsets({'-' => 1});
 print $ld->qx;
 $final += printok($? == 0);
+
+# Expected to return nonzero status and error (suppressed).
+$final += printok(Argv->new('no-such-cmd')->stderr(0)->system);
 
 my $e2 = Argv->new(qw(foo -y -x foo -r Next-to-last-test ...));
 $e2->optset(qw(ONE TWO THREE));
