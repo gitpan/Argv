@@ -5,7 +5,7 @@ use vars qw($VERSION @ISA @EXPORT_OK);
 use Carp;
 require Exporter;
 @ISA = qw(Exporter);
-$VERSION = '0.45';
+$VERSION = '0.46';
 
 # to support the "FUNCTIONAL INTERFACE"
 @EXPORT_OK = qw(system exec qv MSWIN);
@@ -37,7 +37,11 @@ use vars qw(%Argv);
     SYSTEMXARGS	=> $ENV{ARGV_SYSTEMXARGS} || 0,
 );
 
-sub stdmethod {
+# Generates execution-attribute methods from the table above. Provided
+# as a class method itself to potentially allow a derived class to
+# generate more. Semantics of these methods are quite context-driven
+# and are explained in the PODs.
+sub gen_exec_method {
     my $meta = shift;
     no strict 'refs'; # need to evaluate $meta as a symbolic ref
     my @data = @_ ? @_ : keys %{$meta};
@@ -103,8 +107,9 @@ sub stdmethod {
     }
 }
 
-__PACKAGE__->stdmethod;
+__PACKAGE__->gen_exec_method;
 
+# Generate two methods for diverting stdout and stderr in qx().
 {
     my %streams = (stdout => 1, stderr => 2);
     for my $name (keys %streams) {
@@ -126,11 +131,11 @@ __PACKAGE__->stdmethod;
     }
 }
 
-# This method is much like the generated ones above but needs
-# some special-case logic: If called with a param which is
-# true, it starts up a coprocess. If called with false (aka 0) it
-# shuts down the coprocess and destroys the IPC::ChildSafe object. And
-# if called with no params at all it returns the IPC::ChildSafe object.
+# This method is much like the generated exec methods but needs some
+# special-case logic: If called with a param which is true, it starts up
+# a coprocess. If called with false (aka 0) it shuts down the coprocess
+# and destroys the IPC::ChildSafe object. If called with no params at
+# all it returns the existing IPC::ChildSafe object.
 sub ipc_childsafe {
     my $self = shift;
     my $ipc_state = $_[0];
@@ -138,7 +143,7 @@ sub ipc_childsafe {
     if ($ipc_state) {
 	eval { require IPC::ChildSafe };
 	return undef if $@;
-	IPC::ChildSafe->VERSION(3.07);
+	IPC::ChildSafe->VERSION(3.08);
 	$ipc_obj = IPC::ChildSafe->new(@_);
     }
     if (ref $self) {
@@ -159,12 +164,13 @@ sub ipc_childsafe {
     }
 }
 
+# Class/instance method. Parses command line for e.g. -/dbg=1. See PODs.
 sub attropts {
     my $self = shift;
     my $r_argv = ref $_[0] ? shift : undef;
     require Getopt::Long;
     Getopt::Long->VERSION(2.17); # has 'prefix_pattern'
-    my @configs = qw(pass_through prefix_pattern=(-/|--));
+    my @configs = qw(pass_through prefix=-/);
     my @flags = map {"$_=i"} ((map lc, keys %Argv::Argv), @_);
     my %opt;
     if (ref $self) {
@@ -200,7 +206,7 @@ sub attropts {
 *stdopts = *attropts;	# backward compatibility
 
 # A class method which returns a summary of operations performed in
-# printable format. Call it with a void context to start data-
+# printable format. Called with a void context to start data-
 # collection, with a scalar context to end it and get the report.
 sub summary {
     my $class = shift;
@@ -252,6 +258,7 @@ sub new {
 
 # Instance methods; most class methods are auto-generated above.
 
+# Replace the instance's prog(), opt(), and args() vectors all together.
 sub cmd {
     my $self = shift;
     $self->{PROG} = [];
@@ -263,6 +270,7 @@ sub cmd {
     return $self;
 }
 
+# Set or get the 'prog' part of the command line.
 sub prog {
     my $self = shift;
     if (@_) {
@@ -278,6 +286,7 @@ sub prog {
     }
 }
 
+# Set or get the 'args' part of the command line.
 sub args {
     my $self = shift;
     if (@_) {
@@ -293,7 +302,10 @@ sub args {
     }
 }
 
-# Generates the parse(), opts(), and flag() method families.
+# Generates the parse(), opts(), and flag() method families. During
+# construction this is used to generate the methods for the anonymous
+# option set; it can be used explicitly to generate parseXX(), optsXX(),
+# and argsXX() for optset 'XX'.
 sub optset {
     my $self = shift;
     for (@_) {
@@ -345,6 +357,7 @@ sub optset {
     return keys %{$self->{DESC}}; # this is the set of known optsets.
 }
 
+# Not generally used except internally; not documented.
 sub factor {
     my $self = shift;
     my($pset, $r_desc, $r_opts, $r_args, $r_cfg) = @_;
@@ -373,6 +386,7 @@ sub factor {
     return @opts;
 }
 
+# Extract and return any of the specified options from object.
 sub extract {
     my $self = shift;
     my $set = shift;
@@ -384,6 +398,7 @@ sub extract {
     return @extracts;
 }
 
+# Quotes @_ in place against shell expansion. Usually called via autoquote attr
 sub quote {
     my $self = shift;
     for (@_) {
@@ -407,6 +422,7 @@ sub quote {
     return @_;
 }
 
+# Submits @_ to Perl's glob() function. Usually invoked via autoglob attr.
 sub glob {
     my $self = shift;
     my(@orig, @globbed) = $self->args;
@@ -427,6 +443,7 @@ sub glob {
     return @globbed > @orig;
 }
 
+# Internal. Takes a list of optset names, returns a list of options.
 sub _sets2opts {
     my $self = shift;
     my(@sets, @opts);
@@ -448,6 +465,7 @@ sub _sets2opts {
     return @opts;
 }
 
+# Internal, collects data for use by 'summary' method.
 sub _addstats {
     my $self = shift;
     my($prg, $argcnt) = @_;
@@ -457,8 +475,9 @@ sub _addstats {
     $Argv::Summary{$prg} = $stats;
 }
 
+# Wrapper around Perl's exec().
 sub exec {
-    return __PACKAGE__->new(@_)->exec if !ref($_[0]);
+    return __PACKAGE__->new(@_)->system if !ref($_[0]) || ref($_[0]) eq 'HASH';
     my $self = shift;
     if ($self->ipc_childsafe) {
 	exit($self->system(@_) | $self->ipc_childsafe->finish);
@@ -470,7 +489,7 @@ sub exec {
 	if ($self->noexec) {
 	    print STDERR "- @cmd\n";
 	} else {
-	    $self->dbg("+ @cmd");
+	    $self->_dbg("+ @cmd");
 	    open(_O, '>&STDOUT');
 	    open(_E, '>&STDERR');
 	    if ($ofd == 2) {
@@ -493,7 +512,8 @@ sub exec {
     }
 }
 
-sub ipccmd {
+# Internal - service method for system/exec to call into IPC::ChildSafe.
+sub _ipccmd {
     my $self = shift;
     my $cmd = shift;
     # Throw out the prog name since it's already running
@@ -511,8 +531,9 @@ sub ipccmd {
     return %results;
 }
 
+# Wrapper around Perl's system().
 sub system {
-    return __PACKAGE__->new(@_)->system if !ref($_[0]);
+    return __PACKAGE__->new(@_)->system if !ref($_[0]) || ref($_[0]) eq 'HASH';
     my $self = shift;
     $self->glob if $self->autoglob;
     my @prog = @{$self->{PROG}};
@@ -528,7 +549,7 @@ sub system {
 	print STDERR "- @cmd\n";
     } else {
 	if ($self->ipc_childsafe) {
-	    my %results = $self->ipccmd(@cmd);
+	    my %results = $self->_ipccmd(@cmd);
 	    $? = $results{status} << 8;
 	    if ($ofd == 2) {
 		print STDERR @{$results{stdout}} if @{$results{stdout}};
@@ -543,7 +564,7 @@ sub system {
 		print STDERR @{$results{stderr}} if $efd && @{$results{stderr}};
 	    }
 	} else {
-	    $self->dbg("+ @cmd");
+	    $self->_dbg("+ @cmd");
 	    open(_O, '>&STDOUT');
 	    open(_E, '>&STDERR');
 	    if ($ofd == 2) {
@@ -576,6 +597,7 @@ sub system {
     return $rc;
 }
 
+# Wrapper around Perl's qx(), aka backquotes.
 sub qx {
     my $self = shift;
     my @prog = @{$self->{PROG}};
@@ -588,7 +610,7 @@ sub qx {
     my @data;
     my($ofd, $efd) = ($self->stdout, $self->stderr);
     if ($self->ipc_childsafe) {
-	my %results = $self->ipccmd(@cmd);
+	my %results = $self->_ipccmd(@cmd);
 	$? = $results{status} << 8;
 	if ($ofd == 1) {
 	    push(@data, @{$results{stdout}});
@@ -611,7 +633,7 @@ sub qx {
 		if ($self->noexec) {
 		    print STDERR "- @cmd\n";
 		} else {
-		    $self->dbg("+ @cmd");
+		    $self->_dbg("+ @cmd");
 		    $self->_qx_stderr(\@cmd, $efd);
 		    $self->_qx_stdout(\@cmd, $ofd);
 		    push(@data, CORE::qx(@cmd));
@@ -621,7 +643,7 @@ sub qx {
 	    if ($self->noexec) {
 		print STDERR "- @cmd\n";
 	    } else {
-		$self->dbg("+ @cmd");
+		$self->_dbg("+ @cmd");
 		$self->_qx_stderr(\@cmd, $efd);
 		$self->_qx_stdout(\@cmd, $ofd);
 		@data = CORE::qx(@cmd);
@@ -640,16 +662,14 @@ sub qx {
     }
 }
 
-# Can't override qx() so we export an alias instead.
+# Can't override qx() in main package so we export an alias instead.
 sub qv { return __PACKAGE__->new(@_)->qx }
 
-sub warning {
-    my $self = shift;
-    carp("Warning: ${$self->{PROG}}[-1]: ", @_);
-}
+# Internal - provide a warning with std format and caller's context.
+sub warning { my $self = shift; carp("Warning: ${$self->{PROG}}[-1]: ", @_); }
 
 # Not documented; primarily for internal use.
-sub dbg {
+sub _dbg {
     my $self = shift;
     return unless $self->dbglevel;
     warn "@_\n" if (caller(1))[3] =~ /system|exec|qx/;
@@ -920,7 +940,7 @@ invoke their builtin equivalent on it.
 =item * system([<optset-list>])
 
 Reassembles the argv and invokes system(). Return value and value of
-$?, $!, etc. are just as described in L<perlfunc/"system">
+$?, $!, etc. are just as described in I<perlfunc/"system">
 
 Arguments to this method determine which of the parsed option-sets will
 be used in the executed argv. If passed no arguments, C<$obj->system>
@@ -972,7 +992,7 @@ Option sets are handled as described in I<system> above.
 
 =item * qx()
 
-Same semantics as described in L<perlfunc/"qx"> but has the capability
+Same semantics as described in I<perlfunc/"qx"> but has the capability
 to process only a set number of arguments at a time to avoid exceeding
 the shell's line-length limit. This value is settable with the
 I<qxargs> method.
@@ -1146,8 +1166,10 @@ would cause the script to parse the following command line:
 
     script -/noexec 1 -/dbglevel 2 -flag1 -flag2 arg1 arg2 arg3 ...
 
-so as to remove the C<-/noexec 1 -/dbglevel 2> and set the two class attrs.
-The C<-/> prefix is chosen to prevent conflicts with "real" flags.
+so as to remove the C<-/noexec 1 -/dbglevel 2> and set the two class
+attrs.  The C<-/> prefix is chosen to prevent conflicts with "real"
+flags. Abbreviations are allowed as long as they're unique within the
+set of -/ flags.
 
 =head1 PORTING
 
