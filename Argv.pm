@@ -10,7 +10,7 @@ use constant MSWIN	=> $^O =~ /win32/i;
 
 @EXPORT_OK = qw(system exec qxargv); # to support the "FUNCTIONAL INTERFACE"
 
-$VERSION = '0.32';
+$VERSION = '0.33';
 
 # Adapted from perltootc (see): an "eponymous meta-object" implementing
 # "translucent attributes".
@@ -255,8 +255,8 @@ sub extract
 sub quote
 {
    my $self = shift;
-   my @argv = @_ ? @_ : $self->args;
-   for (@argv) {
+   @_ = $self->args if !@_;
+   for (@_) {
       # If requested, change / for \ in Windows file paths.
       s%/%\\%g if $self->nativepath;
       # Skip arg if already quoted ...
@@ -274,7 +274,7 @@ sub quote
       # and last the entire string.
       $_ = qq("$_");
    }
-   return (defined wantarray) ? @argv : $self->args(@argv);
+   return @_;
 }
 
 sub glob

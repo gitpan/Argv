@@ -31,3 +31,6 @@ Revision history for Perl extension Argv.
 	  allows a user to request that commands be run
 	  in the context of a single co-process rather
 	  than doing a new fork/exec for each one.
+
+0.33  Fri Nov 19 11:45:44 EST 1999
+	- Fixed a bug in Argv->quote method.
