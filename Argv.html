@@ -389,8 +389,7 @@ the following are legal:</p>
 <p>By default the <a href="#item_system"><code>$obj-&gt;system</code></a> method autoquotes its arguments <em>iff</em>
 the platform is Windows and the arguments are a list, because in this
 case a shell is always used. This behavior can be toggled with
-<a href="#item_autoquote"><code>$obj-&gt;autoquote</code></a>.  <em>Note: if and when Perl 5.6 fixes this ``bug'',
-Argv will be changed to examine the value of $]</em>.</p>
+<a href="#item_autoquote"><code>$obj-&gt;autoquote</code></a>.</p>
 <p></p>
 <li><strong>exec([&lt;optset-list&gt;])</strong><br />
 </li>
@@ -592,8 +591,24 @@ the new process in the background. Set by default.
 <li><strong><a name="item_inpathnorm">inpathnorm</a></strong><br />
 </li>
 If set, normalizes pathnames to their native format just before
-executing. This is NOT set by default; even when set it's a no-op
-except on Windows, where it converts /x/y/z to \x\y\z.
+executing. This is NOT set by default, and even when set it's a no-op
+except on Windows where it converts /x/y/z to \x\y\z. Only the <em>prog</em>
+and <em>args</em> lists are normalized; options placed in the <em>opts</em> list
+are left alone.
+<p>However, for better or worse it's common to lump opts and args together
+so some attempt is made to separate them heuristically.  The algorithm
+is that if the word begins with <code>/</code> we consider that it might be an
+option and look more carefully: otherwise we switch all slashes to
+backslashes.  If a word is in the form <code>/opt:stuff</code> we assume <em>stuff</em>
+is meant as a path and convert it. Otherwise words which look like
+options (start with a slash and contain no other slashes) are left
+alone.</p>
+<p>This is necessarily an inexact science. In particular there is an
+ambiguity with combined options, e.g. /E/I/Q.  This is a legal pathname
+and is treated as such. Therefore, do not set combined options as part
+of the <em>args</em> list when making use of argument path norming. Some
+Windows commands accept Unix-style options (-x -y) as well which can be
+useful for disambiguation.</p>
 <p></p>
 <li><strong><a name="item_outpathnorm">outpathnorm</a></strong><br />
 </li>
@@ -644,16 +659,34 @@ if broken up into ``ls foo'' and ``ls bar'' but the same cannot be said for
 Setting this attribute to 0, e.g:
 <pre>
     $obj-&gt;stdout(0);</pre>
-<p>causes STDOUT to be closed during invocation of the <em>execution
-methods</em> <a href="#item_system"><code>system</code></a>, <a href="#item_qx"><code>qx</code></a>, and <a href="#item_exec"><code>exec</code></a> and restored when they finish. A
-fancy (and portable) way of saying <code>1&gt;/dev/null</code> without needing a
-shell. A value of 2 is the equivalent of <code>1&gt;&amp;2</code>.</p>
+<p>causes STDOUT to be connected to the <code>1&gt;/dev/null</code> (Unix) or NUL
+(Windows) device during invocation of the <em>execution methods</em>
+<a href="#item_system"><code>system</code></a>, <a href="#item_qx"><code>qx</code></a>, and <a href="#item_exec"><code>exec</code></a> and restored when they finish. Relieves
+the programmer of the burden and noise of opening, dup-ing, and
+restoring temporary handles.</p>
+<p>A value of 2 is the equivalent of using <code>1&gt;&amp;2</code> to the shell,
+meaning that it would send stdout to the stderr device.</p>
+<p>It's also possible to pass any non-numeric EXPR; these will be passed
+to open().  For instance, to accumulate output from the current object
+in <code>/tmp/foo</code> use:</p>
+<pre>
+    $obj-&gt;stdout(&quot;&gt;&gt;/tmp/foo&quot;);</pre>
+<p>Note that in this usage, responsibility for portable constructs such as
+the existence of <em>/tmp</em> belongs to the programmer.</p>
 <p></p>
 <li><strong><a name="item_stderr">stderr</a></strong><br />
 </li>
-As above, for STDERR. A value of 1 is the equivalent of <code>2&gt;&amp;1</code>:
+As above, for STDERR. A value of 1 is the equivalent of <code>2&gt;&amp;1</code>,
+meaning that it sends stderr to the stdout device. E.g.:
 <pre>
     @alloutput = $obj-&gt;stderr(1)-&gt;qx;</pre>
+<p></p>
+<li><strong><a name="item_stdin">stdin</a></strong><br />
+</li>
+As above, for STDIN, but note that setting -&gt;stdin to 0 is a no-op.
+To turn off standard input it's necessary to use a negative value:
+<pre>
+    $obj-&gt;stdin(-1);</pre>
 <p></p>
 <li><strong><a name="item_quiet">quiet</a></strong><br />
 </li>
@@ -728,8 +761,9 @@ instances around with different attribute sets, or you can keep one
 letting the clone go out of scope in the next line:</p>
 <pre>
     $obj-&gt;clone-&gt;stderr(0)-&gt;system;</pre>
-<p>Or do you toggle the class attributes while using vanilla instances?  I
-don't know the answer, but choosing a consistent style is a good idea.</p>
+<p>Or is it better to toggle the class attributes while using vanilla
+instances?  I don't know the answer, but choosing a consistent style is
+a good idea.</p>
 <p>
 </p>
 <hr />

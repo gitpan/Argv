@@ -228,3 +228,17 @@ Revision history for Perl extension Argv.
 1.13 Fri Oct 29 17:57:01 EDT 2004
 	- Fixed a typo reported by Leo Sager which caused internal
 	  and external redirections to confuse each other.
+
+1.14 Mon Mar 14 11:13:42 EST 2005
+	- Allow ->stdout() and ->stderr() to specify any EXPR
+	  which is valid to open(), e.g. ->stdout(">>/tmp/foo");
+	- Show redirections in verbosity output.
+	- Previously, when std{in,out,err} were turned off, this was
+	  done by closing the handle. Now, the handle is connected to
+	  the null device (/dev/null or NUL) instead because closing
+	  these standard descriptors can raise complications.
+	- Various other cleanups vis-a-vis the -std*() redirection methods.
+	- Improve ->inpathnorm() reliability.
+	- Fix to autoquoting: on windows globbing is not handled
+	  by the shell so we let '*' go by.
+

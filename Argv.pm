@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.13';
+$VERSION = '1.14';
 @ISA = qw(Exporter);
 
 use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
@@ -13,6 +13,8 @@ use Carp;
 require Exporter;
 
 my $class = __PACKAGE__;
+
+my $NUL = MSWIN ? 'NUL' : '/dev/null';
 
 # Adapted from perltootc (see): an "eponymous meta-object" implementing
 # "translucent attributes".
@@ -136,9 +138,9 @@ $class->gen_exec_method;
 	    my $fd = $streams{$name};
 	    if ($fd == 0) {
 		warn "Error: illegal value '$nfd' for $name" if $nfd > 0;
-		push(@$r_cmd, '<' . (MSWIN ? 'NUL' : '/dev/null')) if $nfd < 0;
+		push(@$r_cmd, "<$NUL") if $nfd < 0;
 	    } elsif ($nfd == 0) {
-		push(@$r_cmd, "$fd>" . (MSWIN ? 'NUL' : '/dev/null'));
+		push(@$r_cmd, "$fd>$NUL");
 	    } elsif ($nfd == (3-$fd)) {
 		push(@$r_cmd, sprintf "%d>&%d", $fd, 3-$fd);
 	    } elsif ($nfd != $fd) {
@@ -503,13 +505,39 @@ sub extract {
     return @extracts;
 }
 
+sub argpathnorm {
+    my $self = shift;
+    my $norm = $self->inpathnorm;
+    return unless MSWIN && $norm && !ref($norm);
+    for (@_) {
+	# If requested, change / for \ in Windows file paths.
+	# This is necessarily an inexact science.
+	if (m%^/%) {
+	    if (m%(\w+):(.+)%) {
+		# If it looks like an option specifying a path (/opt:path),
+		# normalize only the path part.
+		my($opt, $path) = ($1, $2);
+		$path =~ s%/%\\%g;
+		$_ = "/$opt:$path";
+	    } else {
+		# If it contains a slash (any kind) after the initial one
+		# treat it as a full path. This is where you get into
+		# ambiguity with combined options (e.g. /E/I/Q/S) which
+		# could technically be a path. So that's just not allowed
+		# when path norming.
+		my $slashes = tr/\/\\//;
+		s%/%\\%g if $slashes > 1;
+	    }
+	} else {
+	    s%/%\\%g;
+	}
+    }
+}
+
 # Quotes @_ in place against shell expansion. Usually called via autoquote attr
 sub quote {
     my $self = shift;
-    my $inpathnorm = $self->inpathnorm;
     for (@_) {
-	# If requested, change / for \ in Windows file paths.
-	s%/%\\%g if MSWIN && $inpathnorm && !ref($inpathnorm);
 	# Hack - allow user to exempt any arg from quoting by prefixing '^'.
 	next if s%^\^%%;
 	# Special case - turn internal newlines back to literal \n on Win32
@@ -524,7 +552,13 @@ sub quote {
 	    next;
 	}
 	# Skip if contains no special chars.
-	next unless m%[^-=:_."\w\\/]% || tr%\n%%;
+	if (MSWIN) {
+	    # On windows globbing is not handled by the shell so we
+	    # let '*' go by.
+	    next unless m%[^-=:_."\w\\/*]% || tr%\n%%;
+	} else {
+	    next unless m%[^-=:_."\w\\/]% || tr%\n%%;
+	}
 	# Special case - leave things that look like redirections alone.
 	next if /^\d?(?:<{1,2})|(?:>{1,2})/;
 	# This is a hack to support MKS-built perl 5.004. Don't know
@@ -673,6 +707,26 @@ sub _dbg {
     my @tmp = @txt;
     for (@tmp) { $_ = qq("$_") if /\s/ }
     $self->dump if $level >= 3;
+    my($ifd, $ofd, $efd) = ($self->stdin, $self->stdout, $self->stderr);
+    if ($ifd !~ m%^[\d-]*$%) {
+	push(@tmp, $ifd);
+    } elsif ($ifd < 0) {
+	push(@tmp, "<$NUL");
+    }
+    if ($ofd !~ m%^[\d-]*$%) {
+	push(@tmp, $ofd);
+    } elsif ($ofd <= 0) {
+	push(@tmp, "1>$NUL");
+    } elsif ($ofd != 1) {
+	push(@tmp, "1>&$ofd");
+    }
+    if ($efd !~ m%^[\d-]*$%) {
+	push(@tmp, "2$efd");
+    } elsif ($efd <= 0) {
+	push(@tmp, "2>$NUL");
+    } elsif ($efd != 2) {
+	push(@tmp, "2>&$efd");
+    }
     print $fh "$prefix @tmp\n";
 }
 
@@ -766,26 +820,33 @@ sub exec {
 	} else {
 	    my($ifd, $ofd, $efd) = ($self->stdin, $self->stdout, $self->stderr);
 	    $self->_dbg($dbg, '+', \*STDERR, @cmd) if $dbg;
-	    open(_I, '>&STDIN');
+	    open(_I, '<&STDIN');
 	    open(_O, '>&STDOUT');
 	    open(_E, '>&STDERR');
-	    if ($ifd) {
+	    if ($ifd !~ m%^[\d-]*$%) {
+		open(STDIN, $ifd) || warn "$ifd: $!";
+	    } elsif ($ifd < 0) {
+		open(STDIN, "<$NUL") || warn "STDIN: $!";
+	    } else {
 		warn "Warning: illegal value '$ifd' for stdin" if $ifd > 0;
-		close(STDIN) if $ifd < 0;
 	    }
-	    if ($ofd == 2) {
+	    if ($ofd !~ m%^[\d-]*$% && !$self->quiet) {
+		open(STDOUT, $ofd) || warn "$ofd: $!";
+	    } elsif ($ofd <= 0 || $self->quiet) {
+		open(STDOUT, ">$NUL") || warn "STDOUT: $!";
+	    } elsif ($ofd == 2) {
 		open(STDOUT, '>&STDERR') || warn "Can't dup stdout";
-	    } elsif ($self->quiet) {
-		close(STDOUT);
 	    } elsif ($ofd != 1) {
-		close(STDOUT) if !$ofd;
-		warn "Warning: illegal value '$ofd' for stdout" if $ofd > 2;
+		warn "Warning: illegal value '$ofd' for stdout";
 	    }
-	    if ($efd == 1) {
+	    if ($efd !~ m%^[\d-]*$%) {
+		open(STDERR, $efd) || warn "$efd: $!";
+	    } elsif ($efd <= 0) {
+		open(STDERR, ">$NUL") || warn "STDERR: $!";
+	    } elsif ($efd == 1) {
 		open(STDERR, '>&STDOUT') || warn "Can't dup stderr";
-	    } elsif ($efd != 2) {
-		close(STDERR) if !$efd;
-		warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
+	    } elsif ($efd > 2) {
+		warn "Warning: illegal value '$efd' for stderr";
 	    }
 	    my $rc;
 	    if ($envp) {
@@ -797,7 +858,7 @@ sub exec {
 	    # Shouldn't get here but defensive programming and all that ...
 	    if ($rc) {
 		my $error = "$!";
-		open(STDIN, '>&_I'); close(_I);
+		open(STDIN, '<&_I'); close(_I);
 		open(STDOUT, '>&_O'); close(_O);
 		open(STDERR, '>&_E'); close(_E);
 		die "$0: $cmd[0]: $error\n";
@@ -854,7 +915,9 @@ sub system {
     my @args = @{$self->{AV_ARGS}};
     my $childsafe = ((ref($self) ne $class) &&
 			    $self->ipc_childsafe && !$self->mustexec) ? 1 : 0;
-    # This potentially modifies (@prog, @opts, @args) in place.
+
+    # These potentially modify their arguments in place.
+    $self->argpathnorm(@prog, @args);
     $self->quote(@prog, @opts, @args)
 	if (((MSWIN && (@prog + @opts + @args) > 1) || $childsafe) &&
 						       $self->autoquote);
@@ -868,17 +931,31 @@ sub system {
 	$? = $rc = ($results{status} << 8);
 	if ($self->quiet) {
 	    # say nothing
+	} elsif ($ofd !~ m%^[\d-]*$%) {
+	    if (open(OFD, $ofd)) {
+		print OFD @{$results{stdout}} if @{$results{stdout}};
+		close OFD;
+	    } else {
+		warn "$ofd: $!";
+	    }
 	} elsif ($ofd == 2) {
 	    print STDERR @{$results{stdout}} if @{$results{stdout}};
 	} else {
 	    warn "Warning: illegal value '$ofd' for stdout" if $ofd > 2;
-	    print STDOUT @{$results{stdout}} if $ofd && @{$results{stdout}};
+	    print STDOUT @{$results{stdout}} if @{$results{stdout}};
 	}
 	if ($efd == 1) {
 	    print STDOUT @{$results{stderr}} if @{$results{stderr}};
+	} elsif ($efd !~ m%^[\d-]*$%) {
+	    if (open(EFD, $efd)) {
+		print EFD @{$results{stderr}} if @{$results{stderr}};
+		close EFD;
+	    } else {
+		warn "$efd: $!";
+	    }
 	} else {
 	    warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
-	    print STDERR @{$results{stderr}} if $efd && @{$results{stderr}};
+	    print STDERR @{$results{stderr}} if @{$results{stderr}};
 	}
     } else {
 	# Reset to defaults in dbg mode (what's this for?)
@@ -887,27 +964,38 @@ sub system {
 	    $self->_dbg($dbg, '-', \*STDERR, @cmd);
 	    return 0;
 	}
-	open(_I, '>&STDIN');
+	open(_I, '<&STDIN');
 	open(_O, '>&STDOUT');
 	open(_E, '>&STDERR');
-	if ($ifd) {
+
+	if ($ifd !~ m%^[\d-]*$%) {
+	    open(STDIN, $ifd) || warn "$ifd: $!";
+	} elsif ($ifd < 0) {
+	    open(STDIN, "<$NUL") || warn "STDIN: $!";
+	} else {
 	    warn "Warning: illegal value '$ifd' for stdin" if $ifd > 0;
-	    close(STDIN) if $ifd < 0;
 	}
-	if ($ofd == 2) {
+
+	if ($ofd !~ m%^[\d-]*$% && !$self->quiet) {
+	    open(STDOUT, $ofd) || warn "$ofd: $!";
+	} elsif ($ofd <= 0 || $self->quiet) {
+	    open(STDOUT, ">$NUL") || warn "STDOUT: $!";
+	} elsif ($ofd == 2) {
 	    open(STDOUT, '>&STDERR') || warn "Can't dup stdout";
-	} elsif ($self->quiet) {
-	    close(STDOUT);
 	} elsif ($ofd != 1) {
-	    close(STDOUT) if !$ofd;
-	    warn "Warning: illegal value '$ofd' for stdout" if $ofd > 2;
+	    warn "Warning: illegal value '$ofd' for stdout";
 	}
-	if ($efd == 1) {
+
+	if ($efd !~ m%^[\d-]*$%) {
+	    open(STDERR, $efd) || warn "$efd: $!";
+	} elsif ($efd <= 0) {
+	    open(STDERR, ">$NUL") || warn "STDERR: $!";
+	} elsif ($efd == 1) {
 	    open(STDERR, '>&STDOUT') || warn "Can't dup stderr";
-	} elsif ($efd != 2) {
-	    close(STDERR) if !$efd;
-	    warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
+	} elsif ($efd > 2) {
+	    warn "Warning: illegal value '$efd' for stderr";
 	}
+
 	my $limit = $self->syxargs;
 	if ($limit && @args) {
 	    if ($limit == -1) {
@@ -941,7 +1029,7 @@ sub system {
 		$rc = CORE::system @cmd;
 	    }
 	}
-	open(STDIN, '>&_I'); close(_I);
+	open(STDIN, '<&_I'); close(_I);
 	open(STDOUT, '>&_O'); close(_O);
 	open(STDERR, '>&_E'); close(_E);
     }
@@ -963,11 +1051,14 @@ sub qx {
     my @args = @{$self->{AV_ARGS}};
     my $childsafe = ((ref($self) ne $class) &&
 			    $self->ipc_childsafe && !$self->mustexec) ? 1 : 0;
+
+    # These potentially modify their arguments in place.
     @args = $self->glob(@args)
 		if MSWIN && $self->autoglob && $childsafe;
-    # This potentially modifies (@prog, @opts, @args) in place.
+    $self->argpathnorm(@prog, @args);
     $self->quote(@prog, @opts, @args)
 	if (((@prog + @opts + @args) > 1 || $childsafe) && $self->autoquote);
+
     my @cmd = (@prog, @opts, @args);
     my @data;
     my $dbg = 0;
@@ -982,7 +1073,7 @@ sub qx {
 	    $self->_dbg($dbg, '-', \*STDERR, @cmd);
 	} else {
 	    my %results = $self->_ipccmd(@cmd);
-	    if ($ofd == 0) {
+	    if ($ofd <= 0) {
 		# ignore the results
 	    } elsif ($ofd == 1) {
 		push(@data, @{$results{stdout}});
@@ -1081,9 +1172,12 @@ sub readpipe {
     my @prog = @{$self->{AV_PROG}};
     my @opts = $self->_sets2opts(@_);
     my @args = @{$self->{AV_ARGS}};
-    # This potentially modifies (@prog, @opts, @args) in place.
+
+    # These potentially modify their arguments in place.
+    $self->argpathnorm(@prog, @args);
     $self->quote(@prog, @opts, @args)
 	if (((@prog + @opts + @args) > 1) && $self->autoquote);
+
     my @cmd = (@prog, @opts, @args);
     my $dbg = 0;
     my($ifd, $ofd, $efd) = ($self->stdin, $self->stdout, $self->stderr);
@@ -1503,8 +1597,7 @@ and this would set the default to none class-wide, and then use it:
 By default the C<$obj-E<gt>system> method autoquotes its arguments I<iff>
 the platform is Windows and the arguments are a list, because in this
 case a shell is always used. This behavior can be toggled with
-C<$obj-E<gt>autoquote>.  I<Note: if and when Perl 5.6 fixes this "bug",
-Argv will be changed to examine the value of $]>.
+C<$obj-E<gt>autoquote>.
 
 =item * exec([<optset-list>])
 
@@ -1729,8 +1822,26 @@ the new process in the background. Set by default.
 =item * inpathnorm
 
 If set, normalizes pathnames to their native format just before
-executing. This is NOT set by default; even when set it's a no-op
-except on Windows, where it converts /x/y/z to \x\y\z.
+executing. This is NOT set by default, and even when set it's a no-op
+except on Windows where it converts /x/y/z to \x\y\z. Only the I<prog>
+and I<args> lists are normalized; options placed in the I<opts> list
+are left alone.
+
+However, for better or worse it's common to lump opts and args together
+so some attempt is made to separate them heuristically.  The algorithm
+is that if the word begins with C</> we consider that it might be an
+option and look more carefully: otherwise we switch all slashes to
+backslashes.  If a word is in the form C</opt:stuff> we assume I<stuff>
+is meant as a path and convert it. Otherwise words which look like
+options (start with a slash and contain no other slashes) are left
+alone.
+
+This is necessarily an inexact science. In particular there is an
+ambiguity with combined options, e.g. /E/I/Q.  This is a legal pathname
+and is treated as such. Therefore, do not set combined options as part
+of the I<args> list when making use of argument path norming. Some
+Windows commands accept Unix-style options (-x -y) as well which can be
+useful for disambiguation.
 
 =item * outpathnorm
 
@@ -1784,16 +1895,37 @@ Setting this attribute to 0, e.g:
 
     $obj->stdout(0);
 
-causes STDOUT to be closed during invocation of the I<execution
-methods> C<system>, C<qx>, and C<exec> and restored when they finish. A
-fancy (and portable) way of saying C<1E<gt>/dev/null> without needing a
-shell. A value of 2 is the equivalent of C<1E<gt>&2>.
+causes STDOUT to be connected to the C<1E<gt>/dev/null> (Unix) or NUL
+(Windows) device during invocation of the I<execution methods>
+C<system>, C<qx>, and C<exec> and restored when they finish. Relieves
+the programmer of the burden and noise of opening, dup-ing, and
+restoring temporary handles.
+
+A value of 2 is the equivalent of using C<1E<gt>&2> to the shell,
+meaning that it would send stdout to the stderr device.
+
+It's also possible to pass any non-numeric EXPR; these will be passed
+to open().  For instance, to accumulate output from the current object
+in C</tmp/foo> use:
+
+    $obj->stdout(">>/tmp/foo");
+
+Note that in this usage, responsibility for portable constructs such as
+the existence of I</tmp> belongs to the programmer.
 
 =item * stderr
 
-As above, for STDERR. A value of 1 is the equivalent of C<2E<gt>&1>:
+As above, for STDERR. A value of 1 is the equivalent of C<2E<gt>&1>,
+meaning that it sends stderr to the stdout device. E.g.:
 
     @alloutput = $obj->stderr(1)->qx;
+
+=item * stdin
+
+As above, for STDIN, but note that setting -E<gt>stdin to 0 is a no-op.
+To turn off standard input it's necessary to use a negative value:
+
+    $obj->stdin(-1);
 
 =item * quiet
 
@@ -1876,8 +2008,9 @@ letting the clone go out of scope in the next line:
 
     $obj->clone->stderr(0)->system;
 
-Or do you toggle the class attributes while using vanilla instances?  I
-don't know the answer, but choosing a consistent style is a good idea.
+Or is it better to toggle the class attributes while using vanilla
+instances?  I don't know the answer, but choosing a consistent style is
+a good idea.
 
 =head1 AUTHOR
 
