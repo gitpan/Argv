@@ -5,7 +5,7 @@ use vars qw($VERSION @ISA @EXPORT_OK);
 use Carp;
 require Exporter;
 @ISA = qw(Exporter);
-$VERSION = '0.47';
+$VERSION = '0.48';
 
 # to support the "FUNCTIONAL INTERFACE"
 @EXPORT_OK = qw(system exec qv MSWIN);
@@ -29,12 +29,15 @@ use vars qw(%Argv);
     DBGLEVEL	=> $ENV{ARGV_DBGLEVEL} || 0,
     DFLTSETS	=> {'' => 1},
     EXECWAIT	=> defined($ENV{ARGV_EXECWAIT}) ? $ENV{ARGV_EXECWAIT} : 1,
-    PATHNORM	=> $ENV{ARGV_PATHNORM} || scalar(MSWIN),
+    INPATHNORM	=> $ENV{ARGV_INPATHNORM} || scalar(MSWIN),
     NOEXEC	=> $ENV{ARGV_NOEXEC} || 0,
+    OUTPATHNORM	=> $ENV{ARGV_OUTPATHNORM} || 0,
     QXARGS	=> $ENV{ARGV_QXARGS} || (MSWIN ? 16 : 128),
+    QXFAIL	=> $ENV{ARGV_QXFAIL} || 0,
     STDOUT	=> defined($ENV{ARGV_STDOUT}) ? $ENV{ARGV_STDOUT} : 1,
     STDERR	=> defined($ENV{ARGV_STDERR}) ? $ENV{ARGV_STDERR} : 2,
-    SYSTEMXARGS	=> $ENV{ARGV_SYSTEMXARGS} || 0,
+    SYFAIL	=> $ENV{ARGV_SYFAIL} || 0,
+    SYXARGS	=> $ENV{ARGV_SYXARGS} || 0,
 );
 
 # Generates execution-attribute methods from the table above. Provided
@@ -143,7 +146,7 @@ sub ipc_childsafe {
     if ($ipc_state) {
 	eval { require IPC::ChildSafe };
 	return undef if $@;
-	IPC::ChildSafe->VERSION(3.08);
+	IPC::ChildSafe->VERSION(3.09);
 	$ipc_obj = IPC::ChildSafe->new(@_);
     }
     if (ref $self) {
@@ -247,10 +250,11 @@ sub new {
     }
     bless $self, $class;
     $self->optset('');
-    $self->cmd(@_) if @_;
+    $self->argv(@_) if @_;
     if ($attrs) {
 	for my $key (keys %$attrs) {
-	    $self->$key($attrs->{$key});
+	    (my $method = $key) =~ s/^-//;
+	    $self->$method($attrs->{$key});
 	}
     }
     return $self;
@@ -259,7 +263,7 @@ sub new {
 # Instance methods; most class methods are auto-generated above.
 
 # Replace the instance's prog(), opt(), and args() vectors all together.
-sub cmd {
+sub argv {
     my $self = shift;
     $self->{PROG} = [];
     $self->{OPTS}{''} = [];
@@ -269,6 +273,7 @@ sub cmd {
     $self->args(@_) if @_;
     return $self;
 }
+*cmd = *argv;	# backward compatibility
 
 # Set or get the 'prog' part of the command line.
 sub prog {
@@ -327,7 +332,7 @@ sub optset {
 		}
 		@{$self->{DESC}{$set}} = @_;
 		$self->factor($set, $self->{DESC}{$set}, $self->{OPTS}{$set},
-		$self->{ARGS}, $self->{CFG}{$set});
+					    $self->{ARGS}, $self->{CFG}{$set});
 		if (defined $self->{OPTS}{$set}) {
 		    my @parsedout = @{$self->{OPTS}{$set}};
 		}
@@ -357,7 +362,12 @@ sub optset {
     return keys %{$self->{DESC}}; # this is the set of known optsets.
 }
 
-# Not generally used except internally; not documented.
+# Not generally used except internally; not documented. First arg
+# is an option set name followed by bunch of array-refs: a pointer
+# to a list of Getopt::Long-style option descs, a ref to be filled
+# in with a list of found options, another containing the input
+# args and to be filled in with the leftovers, and an optional
+# one containing Getopt::Long-style config options.
 sub factor {
     my $self = shift;
     my($pset, $r_desc, $r_opts, $r_args, $r_cfg) = @_;
@@ -403,13 +413,13 @@ sub quote {
     my $self = shift;
     for (@_) {
 	# If requested, change / for \ in Windows file paths.
-	s%/%\\%g if $self->pathnorm;
+	s%/%\\%g if $self->inpathnorm;
+	# Special case - turn internal newlines back to literal \n on Win32
+	s%\n%\\n%gs if MSWIN;
 	# Skip arg if already quoted ...
 	next if substr($_, 0, 1) eq '"' && substr($_, -1, 1) eq '"';
 	# ... or contains no special chars.
 	next unless m%[^-=:_.\w\\/]% || tr%\n%%;
-	# Special case - turn any internal newlines back into literal \n.
-	s%\n(?=.)%\\n%g if MSWIN;
 	# Special case - leave things that look like redirections alone.
 	next if /^\d?(?:<{1,2})|(?:>{1,2})/;
 	# Now quote embedded quotes ...
@@ -579,7 +589,7 @@ sub system {
 		close(STDERR) if !$efd;
 		warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
 	    }
-	    my $limit = $self->systemxargs;
+	    my $limit = $self->syxargs;
 	    if ($limit && @args) {
 		while (my @chunk = splice(@args, 0, $limit)) {
 		    @cmd = (@prog, @opts, @chunk);
@@ -593,7 +603,7 @@ sub system {
 	}
 	$self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
     }
-    exit $?>>8 if $? && $self->autofail;
+    exit $?>>8 if $? && ($self->syfail || $self->autofail);
     return $rc;
 }
 
@@ -652,7 +662,13 @@ sub qx {
 	}
     }
     $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
-    exit $?>>8 if $? && $self->autofail;
+    exit $?>>8 if $? && ($self->qxfail || $self->autofail);
+    if (MSWIN && $self->outpathnorm) {
+	for (@data) {
+	    chomp(my $chomped = $_);
+	    s%\\%/%g if -e $chomped;
+	}
+    }
     if (wantarray) {
 	chomp(@data) if $self->autochomp;
 	return @data;
@@ -771,7 +787,7 @@ builtin analogues in a few ways, for example:
 
 =over
 
-=item 1. An xargs-like capability.
+=item 1. An xargs-like capability without shell intervention.
 
 =item 2. UNIX-like C<exec()> behavior on Windows.
 
@@ -814,13 +830,13 @@ All argument-parsing within Argv is done via Getopt::Long.
 
 =head1 FUNCTIONAL INTERFACE
 
-Because the extensions to C<system/exec/qx> described here may be useful
-for aid in writing portable programs, they're made available for export
+Because the extensions to C<system/exec/qx> described here may be
+useful in writing portable programs, they're made available for export
 as traditional functions. Thus:
 
     use Argv qw(system exec qv);
 
-will override the Perl builtins. There is no way to override the
+will override the Perl builtins. There's no way to override the
 operator C<qx()> so an alias C<qv()> is provided.
 
 =head1 CONSTRUCTOR
@@ -839,15 +855,25 @@ all of the prog, opt, or arg parts as array refs. E.g.
 
 Predigested options are placed in the default (anonymous) option set.
 
-The constructor can be used as a class or instance method. When a new
-instance is generated from an existing one, the new one is a copy
-of its progenitor.
+The constructor can be used as a class or instance method. In the
+latter case the new object is a copy of its progenitor.
 
 The first argument to C<new()> may be a hash-ref, which will be used to
 set I<execution attributes> at construction time. I.e.:
 
-	my $argv = Argv->new({autochomp => 1, stderr => 0}, @ARGV);
+    my $obj = Argv->new({autochomp => 1, stderr => 0}, @ARGV);
 
+It's possible to add the cmd line later:
+
+    my $obj = Argv->new;
+    $obj->prog('cat');
+    $obj->args('/etc/motd');
+
+Or
+
+    my $obj = Argv->new({autochomp=>1});
+    my $motd = $obj->argv(qw(cat /etc/motd))->qx;
+	
 =head1 METHODS
 
 =head2 INSTANCE METHODS
@@ -875,7 +901,7 @@ SETS>) is predefined, so the methods C<parse(), opts(), and flag()> are
 always available.  Most users won't need to define any other sets.
 Note that option-set names are forced to upper case. E.g.:
 
-	$obj->optset('FOO');
+    $obj->optset('FOO');
 
 =item * parseI<NAME>(...option-descriptions...)
 
@@ -885,7 +911,7 @@ The opt-descs are exactly as supported by parseI<FOO>() are exactly the
 same as those described for Getopt::Long, except that no linkage
 argument is allowed. E.g.:
 
-	$obj->parseFOO(qw(file=s list=s@ verbose));
+    $obj->parseFOO(qw(file=s list=s@ verbose));
 
 =item * optsI<NAME>()
 
@@ -895,8 +921,8 @@ Returns or sets the list of options in the B<option set I<NAME>>.
 
 Sets or gets the value of a flag in the appropriate optset, e.g.:
 
-	print "blah blah blah\n" if $obj->flagFOO('verbose');
-	$obj->flagFOO('verbose' => 1);
+    print "blah blah blah\n" if $obj->flagFOO('verbose');
+    $obj->flagFOO('verbose' => 1);
 
 =item * extract
 
@@ -915,7 +941,7 @@ a shell on all platforms.
 The automatic use of I<quote> can be turned off via the I<autoquote>
 method (see).
 
-IMPORTANT: this method quotes its argument list IN PLACE. In other
+IMPORTANT: this method quotes its argument list B<in place>. In other
 words, it may modify its arguments.
 
 =item * glob
@@ -1044,16 +1070,16 @@ the new value is B<temporary>. It lasts until the next I<execution
 method> (C<system, exec, or qx>) invocation, after which the previous
 value is restored. This feature allows locutions like this:
 
-	$argv->cmd('date')->stderr(1)->system;
+	$obj->cmd('date')->stderr(1)->system;
 
-Assuming that the C<$argv> object already exists and has a set of
+Assuming that the C<$obj> object already exists and has a set of
 attributes; we can override one of them at execution time.  More
 examples:
 
-	$argv->stdout(1);          # set attribute, sticky
-	$argv->stdout;             # same as above
-	$foo = $argv->stdout;      # get attribute value
-	$obj = $argv->stdout(1);   # set to 1 (temporary), return $argv
+	$obj->stdout(1);          # set attribute, sticky
+	$obj->stdout;             # same as above
+	$foo = $obj->stdout;      # get attribute value
+	$obj2 = $obj->stdout(1);  # set to 1 (temporary), return $obj
 
 =back
 
@@ -1065,8 +1091,13 @@ All data returned by the C<qx> method is chomped first. Unset by default.
 
 =item * autofail
 
-When set, the program will exit immediately if either of the C<system>
-or C<qx> methods would return a nonzero status. Unset by default.
+When set, the program will exit immediately if the C<system> or C<qx>
+methods detect a nonzero status. Unset by default.
+
+=item * syfail,qxfail
+
+Similar to C<autofail> but applies only to C<system()> or C<qx()>
+respectively. Unset by default.
 
 =item * autoglob
 
@@ -1102,11 +1133,17 @@ finished for a more consistent UNIX-like behavior than the traditional
 Win32 Perl port. Perl just uses the Windows exec() routine, which runs
 the new process in the background. Set by default.
 
-=item * pathnorm
+=item * inpathnorm
 
 If set, normalizes pathnames to their native format just before
 executing. This is set by default on Windows only, thus converting
 /x/y/z to \x\y\z.
+
+=item * outpathnorm
+
+If set, normalizes pathnames returned by the C<qx> method from
+\-delimited to /-delimited. This is NOT set by default; even when set
+it's a no-op except on Windows.
 
 =item * noexec
 
@@ -1121,13 +1158,13 @@ without fear of exceeding your shell's limits. A per-platform default
 is set; this method allows it to be changed. A value of 0 suppresses
 the behavior.
 
-=item * systemxargs
+=item * syxargs
 
-Analogous to I<qxargs> but turned off by default. The reason is that
-C<qx()> is typically used to I<read> data whereas C<system()> is more
-often used to make stateful changes. Consider that "ls foo bar"
-produces the same result if broken up into "ls foo" and "ls bar" but
-the same cannot be said for "mv foo bar".
+Analogous to I<qxargs> but applies to C<system()> and is turned off by
+default. The reason is that C<qx()> is typically used to I<read> data
+whereas C<system()> is more often used to make stateful changes.
+Consider that "ls foo bar" produces the same result if broken up into
+"ls foo" and "ls bar" but the same cannot be said for "mv foo bar".
 
 =item * stdout
 

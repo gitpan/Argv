@@ -80,3 +80,13 @@ Revision history for Perl extension Argv.
 
 0.47 Tue Jan 18 21:09:41 EST 2000
 	- Regularized handling of qx/qv/ccqv/etc
+
+0.48 Sun Jan 30 22:40:17 EST 2000
+	- Renamed 'systemxargs' to 'syxargs'.
+	- Renamed 'pathnorm' to 'inpathnorm', and added
+	  an 'outpathnorm' method as well.
+	- Renamed 'cmd' method to 'argv' (to avoid
+	  confusion with $self->ipc_cleartool->cmd()
+	  method.
+	- Added ->syfail and ->qxfail attributes.
+	- Allow hashref attr specifiers to have a leading '-'.

@@ -16,7 +16,6 @@
 	<LI><A HREF="#DESCRIPTION">DESCRIPTION</A>
 	<LI><A HREF="#FUNCTIONAL_INTERFACE">FUNCTIONAL INTERFACE</A>
 	<LI><A HREF="#CONSTRUCTOR">CONSTRUCTOR</A>
-	<LI><A HREF="#METHODS">METHODS</A>
 	<UL>
 
 		<LI><A HREF="#INSTANCE_METHODS">INSTANCE METHODS</A>
@@ -132,7 +131,7 @@ leads to spaghetti code and potential off-by-one errors.
 The <EM>execution methods</EM>  <CODE>system, exec, and qx</CODE> extend their Perl builtin analogues in a few ways, for example:
 
 <OL>
-<LI><STRONG><A NAME="item_An_xargs_like_capability_">An xargs-like capability.</A></STRONG>
+<LI><STRONG><A NAME="item_An_xargs_like_capability_without">An xargs-like capability without shell intervention.</A></STRONG>
 <LI><STRONG><A NAME="item_UNIX_like_exec_behavior_on_Win">UNIX-like exec() behavior on Windows.</A></STRONG>
 <LI><STRONG><A NAME="item_Automatic_quoting_of_system_on">Automatic quoting of system() on Win32 and qx() everywhere</A></STRONG>
 <LI><STRONG><A NAME="item_Automatic_globbing_primarily_fo">Automatic globbing (primarily for Windows)</A></STRONG>
@@ -172,14 +171,14 @@ All argument-parsing within Argv is done via Getopt::Long.
 <HR>
 <H1><A NAME="FUNCTIONAL_INTERFACE">FUNCTIONAL INTERFACE</A></H1>
 <P>
-Because the extensions to <CODE>system/exec/qx</CODE> described here may be useful for aid in writing portable programs, they're
-made available for export as traditional functions. Thus:
+Because the extensions to <CODE>system/exec/qx</CODE> described here may be useful in writing portable programs, they're made
+available for export as traditional functions. Thus:
 
 <P>
 <PRE>    use Argv qw(system exec qv);
 </PRE>
 <P>
-will override the Perl builtins. There is no way to override the operator <CODE>qx()</CODE> so an alias <CODE>qv()</CODE> is provided.
+will override the Perl builtins. There's no way to override the operator <CODE>qx()</CODE> so an alias <CODE>qv()</CODE> is provided.
 
 <P>
 <HR>
@@ -201,19 +200,32 @@ the prog, opt, or arg parts as array refs. E.g.
 Predigested options are placed in the default (anonymous) option set.
 
 <P>
-The constructor can be used as a class or instance method. When a new
-instance is generated from an existing one, the new one is a copy of its
-progenitor.
+The constructor can be used as a class or instance method. In the latter
+case the new object is a copy of its progenitor.
 
 <P>
 The first argument to <CODE>new()</CODE> may be a hash-ref, which will be used to set <EM>execution attributes</EM> at construction time. I.e.:
 
 <P>
-<PRE>        my $argv = Argv-&gt;new({autochomp =&gt; 1, stderr =&gt; 0}, @ARGV);
+<PRE>    my $obj = Argv-&gt;new({autochomp =&gt; 1, stderr =&gt; 0}, @ARGV);
 </PRE>
 <P>
-<HR>
-<H1><A NAME="METHODS">METHODS</A></H1>
+It's possible to add the cmd line later:
+
+<P>
+<PRE>    my $obj = Argv-&gt;new;
+    $obj-&gt;prog('cat');
+    $obj-&gt;args('/etc/motd');
+</PRE>
+<P>
+Or
+
+<P>
+<PRE>    my $obj = Argv-&gt;new({autochomp=&gt;1});
+    my $motd = $obj-&gt;argv(qw(cat /etc/motd))-&gt;qx;
+        
+=head1 METHODS
+</PRE>
 <P>
 <HR>
 <H2><A NAME="INSTANCE_METHODS">INSTANCE METHODS</A></H2>
@@ -236,7 +248,7 @@ SETS</EM>) is predefined, so the methods <CODE>parse(), opts(), and flag()</CODE
 that option-set names are forced to upper case. E.g.:
 
 <P>
-<PRE>        $obj-&gt;optset('FOO');
+<PRE>    $obj-&gt;optset('FOO');
 </PRE>
 <LI><STRONG><A NAME="item_parseNAME">parseNAME(...option-descriptions...)</A></STRONG>
 <P>
@@ -245,7 +257,7 @@ parse them out of the current argv <STRONG>and into option set <EM>NAME</EM></ST
 linkage argument is allowed. E.g.:
 
 <P>
-<PRE>        $obj-&gt;parseFOO(qw(file=s list=s@ verbose));
+<PRE>    $obj-&gt;parseFOO(qw(file=s list=s@ verbose));
 </PRE>
 <LI><STRONG><A NAME="item_optsNAME">optsNAME()</A></STRONG>
 <P>
@@ -256,8 +268,8 @@ Returns or sets the list of options in the <STRONG>option set <EM>NAME</EM></STR
 Sets or gets the value of a flag in the appropriate optset, e.g.:
 
 <P>
-<PRE>        print &quot;blah blah blah\n&quot; if $obj-&gt;flagFOO('verbose');
-        $obj-&gt;flagFOO('verbose' =&gt; 1);
+<PRE>    print &quot;blah blah blah\n&quot; if $obj-&gt;flagFOO('verbose');
+    $obj-&gt;flagFOO('verbose' =&gt; 1);
 </PRE>
 <LI><STRONG><A NAME="item_extract">extract</A></STRONG>
 <P>
@@ -274,8 +286,7 @@ The automatic use of <EM>quote</EM> can be turned off via the <EM>autoquote</EM>
 method (see).
 
 <P>
-IMPORTANT: this method quotes its argument list IN PLACE. In other words,
-it may modify its arguments.
+IMPORTANT: this method quotes its argument list <STRONG>in place</STRONG>. In other words, it may modify its arguments.
 
 <LI><STRONG><A NAME="item_glob">glob</A></STRONG>
 <P>
@@ -413,17 +424,17 @@ method</EM> (<CODE>system, exec, or qx</CODE>) invocation, after which the previ
 allows locutions like this:
 
 <P>
-<PRE>        $argv-&gt;cmd('date')-&gt;stderr(1)-&gt;system;
+<PRE>        $obj-&gt;cmd('date')-&gt;stderr(1)-&gt;system;
 </PRE>
 <P>
-Assuming that the <CODE>$argv</CODE> object already exists and has a set of attributes; we can override one of
+Assuming that the <CODE>$obj</CODE> object already exists and has a set of attributes; we can override one of
 them at execution time. More examples:
 
 <P>
-<PRE>        $argv-&gt;stdout(1);          # set attribute, sticky
-        $argv-&gt;stdout;             # same as above
-        $foo = $argv-&gt;stdout;      # get attribute value
-        $obj = $argv-&gt;stdout(1);   # set to 1 (temporary), return $argv
+<PRE>        $obj-&gt;stdout(1);          # set attribute, sticky
+        $obj-&gt;stdout;             # same as above
+        $foo = $obj-&gt;stdout;      # get attribute value
+        $obj2 = $obj-&gt;stdout(1);  # set to 1 (temporary), return $obj
 </PRE>
 </UL>
 <UL>
@@ -433,8 +444,13 @@ All data returned by the <CODE>qx</CODE> method is chomped first. Unset by defau
 
 <LI><STRONG><A NAME="item_autofail">autofail</A></STRONG>
 <P>
-When set, the program will exit immediately if either of the <CODE>system</CODE>
-or <CODE>qx</CODE> methods would return a nonzero status. Unset by default.
+When set, the program will exit immediately if the <CODE>system</CODE> or <CODE>qx</CODE>
+methods detect a nonzero status. Unset by default.
+
+<LI><STRONG><A NAME="item_syfail">syfail,qxfail</A></STRONG>
+<P>
+Similar to <CODE>autofail</CODE> but applies only to <CODE>system()</CODE> or <CODE>qx()</CODE>
+respectively. Unset by default.
 
 <LI><STRONG><A NAME="item_autoglob">autoglob</A></STRONG>
 <P>
@@ -466,10 +482,15 @@ consistent UNIX-like behavior than the traditional Win32 Perl port. Perl
 just uses the Windows <CODE>exec()</CODE> routine, which runs the new
 process in the background. Set by default.
 
-<LI><STRONG><A NAME="item_pathnorm">pathnorm</A></STRONG>
+<LI><STRONG><A NAME="item_inpathnorm">inpathnorm</A></STRONG>
 <P>
 If set, normalizes pathnames to their native format just before executing.
 This is set by default on Windows only, thus converting /x/y/z to \x\y\z.
+
+<LI><STRONG><A NAME="item_outpathnorm">outpathnorm</A></STRONG>
+<P>
+If set, normalizes pathnames returned by the <CODE>qx</CODE> method from \-delimited to /-delimited. This is NOT set by default; even
+when set it's a no-op except on Windows.
 
 <LI><STRONG><A NAME="item_noexec">noexec</A></STRONG>
 <P>
@@ -482,10 +503,9 @@ allowing you to blithely invoke e.g. <CODE>$obj-</CODE>qx&gt; on a list of any s
 A per-platform default is set; this method allows it to be changed. A value
 of 0 suppresses the behavior.
 
-<LI><STRONG><A NAME="item_systemxargs">systemxargs</A></STRONG>
+<LI><STRONG><A NAME="item_syxargs">syxargs</A></STRONG>
 <P>
-Analogous to <EM>qxargs</EM> but turned off by default. The reason is that
-<CODE>qx()</CODE> is typically used to <EM>read</EM> data whereas <CODE>system()</CODE> is more often used to make stateful changes. Consider that ``ls foo bar''
+Analogous to <EM>qxargs</EM> but applies to <CODE>system()</CODE> and is turned off by default. The reason is that <CODE>qx()</CODE> is typically used to <EM>read</EM> data whereas <CODE>system()</CODE> is more often used to make stateful changes. Consider that ``ls foo bar''
 produces the same result if broken up into ``ls foo'' and ``ls bar'' but
 the same cannot be said for ``mv foo bar''.
 
