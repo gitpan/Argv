@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.08';
+$VERSION = '1.09';
 @ISA = qw(Exporter);
 
 use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
@@ -506,12 +506,21 @@ sub quote {
     for (@_) {
 	# If requested, change / for \ in Windows file paths.
 	s%/%\\%g if MSWIN && $inpathnorm && !ref($inpathnorm);
-	# Skip arg if already quoted ...
-	next if m%^".*"$%s;
+	# Hack - allow user to exempt any arg from quoting by prefixing '^'.
+	next if s%^\^%%;
 	# Special case - turn internal newlines back to literal \n on Win32
 	s%\n%\\n%gs if MSWIN;
+	# If arg is already quoted with '': on Unix it's safe, leave alone.
+	# On Windows, replace the single quotes with escaped double quotes.
+	if (m%^'(.*)'$%s) {
+	    $_ = qq(\\"$1\\") if MSWIN;
+	    next;
+	} elsif (m%^"(.*)"$%s) {
+	    $_ = qq(\\"$_\\");
+	    next;
+	}
 	# Skip if contains no special chars.
-	next unless m%[^-=:_.\w\\/]% || tr%\n%%;
+	next unless m%[^-=:_."\w\\/]% || tr%\n%%;
 	# Special case - leave things that look like redirections alone.
 	next if /^\d?(?:<{1,2})|(?:>{1,2})/;
 	# This is a hack to support MKS-built perl 5.004. Don't know
@@ -1425,11 +1434,14 @@ if the reference provided is an array-ref, the first element of that
 array is assumed to be a code-ref as above and the rest of the array is
 passed as args to the function on failure.
 
-If the reference is to a scalar, this scalar is incremented for each
-error as execution continues, e.g.
+If the reference is to a scalar, the scalar is incremented for each
+error and execution continues, e.g.
 
     my $rc = 0;
     $obj->autofail(\$rc);
+    ...
+    print "There were $rc failures counted\n";
+    exit($rc);
 
 =item * envp
 
@@ -1461,6 +1473,13 @@ If set, the operands are automatically quoted against shell expansion
 before C<system()> on Windows and C<qx()> on all platforms (since C<qx>
 always invokes a shell, and C<system()> always does so on Windows).
 Set by default.
+
+An individual word of an argv can "opt out" of autoquoting by
+using a leading '^'. For instance:
+
+    ('aa', 'bb', "^I'll do this one myself, thanks!", 'cc')
+
+The '^' is stripped off and the rest of the string left alone.
 
 =item * dbglevel
 

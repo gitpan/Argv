@@ -453,11 +453,14 @@ be called upon error. This provides a basic ``exception-handling'' system:</P>
 if the reference provided is an array-ref, the first element of that
 array is assumed to be a code-ref as above and the rest of the array is
 passed as args to the function on failure.</P>
-<P>If the reference is to a scalar, this scalar is incremented for each
-error as execution continues, e.g.</P>
+<P>If the reference is to a scalar, the scalar is incremented for each
+error and execution continues, e.g.</P>
 <PRE>
     my $rc = 0;
-    $obj-&gt;autofail(\$rc);</PRE>
+    $obj-&gt;autofail(\$rc);
+    ...
+    print &quot;There were $rc failures counted\n&quot;;
+    exit($rc);</PRE>
 <P></P>
 <LI><STRONG><A NAME="item_envp">envp</A></STRONG><BR>
 
@@ -488,6 +491,11 @@ If set, the operands are automatically quoted against shell expansion
 before <A HREF="#item_system"><CODE>system()</CODE></A> on Windows and <A HREF="#item_qx"><CODE>qx()</CODE></A> on all platforms (since <A HREF="#item_qx"><CODE>qx</CODE></A>
 always invokes a shell, and <A HREF="#item_system"><CODE>system()</CODE></A> always does so on Windows).
 Set by default.
+<P>An individual word of an argv can ``opt out'' of autoquoting by
+using a leading '^'. For instance:</P>
+<PRE>
+    ('aa', 'bb', &quot;^I'll do this one myself, thanks!&quot;, 'cc')</PRE>
+<P>The '^' is stripped off and the rest of the string left alone.</P>
 <P></P>
 <LI><STRONG><A NAME="item_dbglevel">dbglevel</A></STRONG><BR>
 

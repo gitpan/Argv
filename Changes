@@ -198,3 +198,9 @@ Revision history for Perl extension Argv.
 
 1.08 Tue Mar  5 14:37:51 EST 2002
 	- Added ->readonly attribute. Helpful with ->noexec (see).
+
+1.09 Wed May  8 17:13:42 EDT 2002
+	- Changed autoquoting strategy to always respect single
+	  quotes on 'arg', escape "arg" to look like \"arg\", and
+	  allow a particular arg to opt out of autoquoting by
+	  prepending "^" as in ^arg.
