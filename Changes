@@ -159,3 +159,24 @@ Revision history for Perl extension Argv.
 	- More cleanups of ->summary class method; try to make
 	  invocation and argument counts agree better.
 	- Bugfix in ->argv method.
+
+1.02 Tue Sep 25 10:17:42 EDT 2001
+	- *COMPATIBILITY ALERT*: The ->inpathnorm attribute now
+	  defaults to OFF on Windows (it's always been a no-op on
+	  UNIX so the only effect is on Windows). In previous
+	  versions the default was ON. Programs which depended on
+	  this default must now set it explicitly.
+	- Reworked ->outpathnorm to be overrideable. This does not
+	  change any semantics in Argv per se.
+
+1.03 Wed Oct  3 11:56:58 EDT 2001
+	- Added ->envp method to specify a custom environment for
+	  the child process.
+	- Added ->dump method (debugging aid).
+	- Defined a meaning for dbglevel=2; it now shows the $? from
+	  each child process.
+	- Defined a meaning for dbglevel=3; it now invokes ->dump before
+	  each execution.
+
+1.04 Thu Nov  1 10:52:36 EST 2001
+	- Clean up and release 1.03 work (1.03 was never released).

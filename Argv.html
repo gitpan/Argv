@@ -1,7 +1,7 @@
 <HTML>
 <HEAD>
 <TITLE>Argv Module</TITLE>
-<LINK REV="made" HREF="mailto:dsb@cleartool.com">
+<LINK REV="made" HREF="mailto:dsb@ultra10.boyski.com">
 </HEAD>
 
 <BODY>
@@ -293,6 +293,13 @@ Expands the argument list using the Perl <EM>glob</EM> builtin. Primarily
 useful on Windows where the invoking shell does not do this for you.
 <P>Automatic use of <EM>glob</EM> on Windows can be enabled via the <EM>autoglob</EM>
 method (vide infra).</P>
+<P></P>
+<LI><STRONG><A NAME="item_dump">dump</A></STRONG><BR>
+
+A no-op except for printing the state of the invoking instance to
+stderr. Potentially useful for debugging in situations where access to
+<EM>perl -d</EM> is limited, e.g. across a socket connection or in a
+crontab. Invoked automatically at <EM>dbglevel=3</EM>.
 <P></P></UL>
 <P>
 <H2><A NAME="execution methods">EXECUTION METHODS</A></H2>
@@ -427,6 +434,19 @@ error as execution continues, e.g.</P>
     my $rc = 0;
     $obj-&gt;autofail(\$rc);</PRE>
 <P></P>
+<LI><STRONG><A NAME="item_envp">envp</A></STRONG><BR>
+
+Allows a different environment to be provided during execution of the
+object. This setting is in scope only for the child process and will
+not affect the environment of the current process.  Takes a hashref:
+<PRE>
+    my %newenv = %ENV;
+    $newenv{PATH} .= ':/usr/ucb';
+    delete @newenv{qw(TERM LANG LD_LIBRARY_PATH)};
+    $obj-&gt;envp(\%newenv);</PRE>
+<P>Subsequent invocations of <EM>$obj</EM> will add <EM>/usr/ucb</EM> to PATH and
+subtract TERM, LANG, and LD_LIBRARY_PATH;</P>
+<P></P>
 <LI><STRONG><A NAME="item_syfail%2Cqxfail">syfail,qxfail</A></STRONG><BR>
 
 Similar to <A HREF="#item_autofail"><CODE>autofail</CODE></A> but apply only to <A HREF="#item_system"><CODE>system()</CODE></A> or <A HREF="#item_qx"><CODE>qx()</CODE></A>
@@ -446,9 +466,9 @@ Set by default.
 <P></P>
 <LI><STRONG><A NAME="item_dbglevel">dbglevel</A></STRONG><BR>
 
-Sets the debug level. Level 0 (the default) is no debugging, 1 prints
-each command before executing it, and higher levels offer progressively
-more output.
+Sets the debug level. Level 0 (the default) means no debugging, level 1
+prints each command before executing it, and higher levels offer
+progressively more output. All debug output goes to stderr.
 <P></P>
 <LI><STRONG><A NAME="item_dfltsets">dfltsets</A></STRONG><BR>
 
@@ -469,8 +489,8 @@ the new process in the background. Set by default.
 <LI><STRONG><A NAME="item_inpathnorm">inpathnorm</A></STRONG><BR>
 
 If set, normalizes pathnames to their native format just before
-executing. This is set by default on Windows only, thus converting
-/x/y/z to \x\y\z.
+executing. This is NOT set by default; even when set it's a no-op
+except on Windows, where it converts /x/y/z to \x\y\z.
 <P></P>
 <LI><STRONG><A NAME="item_outpathnorm">outpathnorm</A></STRONG><BR>
 
@@ -525,7 +545,7 @@ a redirection of STDOUT using the &lt;$obj-&gt;stdout&gt; method above.
 <UL>
 <LI><STRONG><A NAME="item_attropts">attropts</A></STRONG><BR>
 
-The attributes above can be set via method calls (e.g.
+The above attributes can be set via method calls (e.g.
 <A HREF="#item_dbglevel"><CODE>$obj-&gt;dbglevel(1)</CODE></A>) or environment variables (ARGV_DBGLEVEL=1). Use
 of the &lt;$obj-&gt;attropts&gt; method allows them to be parsed from the command
 line as well, e.g. <EM>myscript -/dbglevel 1</EM>. If invoked as a class
@@ -542,10 +562,10 @@ only. E.g.:
 <P>so as to remove the <CODE>-/noexec 1 -/dbglevel 2</CODE> and set the two class
 attrs.  The <CODE>-/</CODE> prefix is chosen to prevent conflicts with ``real''
 flags. Abbreviations are allowed as long as they're unique within the
-set of -/ flags. Whereas</P>
+set of -/ flags. As an instance method:</P>
 <PRE>
     $obj-&gt;attropts;</PRE>
-<P>would parse the current value of <A HREF="#item_args"><CODE>$obj-&gt;args</CODE></A> and run</P>
+<P>it will parse the current value of <A HREF="#item_args"><CODE>$obj-&gt;args</CODE></A> and run</P>
 <PRE>
     $obj-&gt;foo(1);</PRE>
 <P>for every instance of <CODE>-/foo=1</CODE> found there.</P>
@@ -556,7 +576,9 @@ set of -/ flags. Whereas</P>
 <P>This module is known to work on Solaris 2.5-8 and Windows 2000 SP2, and
 with perl 5.004_04 and 5.6.  As these platforms are quite different,
 there should be no <EM>major</EM> portability issues, but please send bug
-reports or patches to the address below.</P>
+reports or patches to the address below. Recent testing is with
+newer (5.6+) versions of Perl so some backporting may be necessary
+for older Perls.</P>
 <P>
 <HR>
 <H1><A NAME="author">AUTHOR</A></H1>

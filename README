@@ -44,13 +44,13 @@ EXTRA FEATURES
 The I<execution methods> C<system, exec, and qx> extend their Perl
 builtin analogues in a few ways.  These are described fully in the POD
 but generally are in the area of UNIX/Win32 portability. For instance,
-they will automatically convert / pathnames to \ on Windows platforms
+they can automatically convert / pathnames to \ on Windows platforms
 before exec-ing them, correctly quote command lines that will be
-exposed to the Windows shell in cases where such exposure wouldn't
-occur on a Unix platform, cause exec() to behave synchronously on
-Windows as it does on Unix, etc.
+exposed to Windows shell-like parsing in cases where such exposure
+wouldn't occur on a Unix platform, cause exec() to behave synchronously
+on Windows as it does on Unix, etc.
 
-As many users may be interested only in these Unix/Windows portability
+Since many users may be interested only in these Unix/Windows portability
 aids and may not care about having an OO approach to factoring argv's
 into option sets, the 'system' and 'exec' methods are also made
 available as regular functions which (if imported) override the
@@ -58,30 +58,6 @@ builtins. Thus users may find that adding
 
     use Argv qw(system exec qv);
 
-to an existing UNIX-based script enhances its portability to Windows.
-The qx() method is also made available as a function but since it's
-impossible to overrride the C<qx()> builtin, it's exported as C<qv()>.
-
-RELEASE STATE
-
-Argv is still considered in "beta" state, which I consider to mean that
-it works pretty well but I reserve the right to make interface
-changes.
-
-A NOTE ON THE NAME
-
-I'm aware that single-level namespaces are generally deprecated, but
-there are many modern exceptions; see Memoize, Coy, and Interpolation
-among others. I tried hard to fit mine into an existing namespace as
-well as soliciting ideas at modules@perl.org. But I couldn't find a
-natural place by myself and no one on the modules list was able to
-suggest a fitting spot either.
-
-Considering the alternatives of putting it in a 'wrong' category just
-for the sake of having one, or creating a category for it to dwell in
-all alone, I decided I had a reasonable case for making an exception.
-IMHO "Argv" is just the natural name for this module. The
-CPAN/modules@perl.org policies don't say that single-level names are
-forbidden, they simply have wording to the effect that one should think
-long and hard before using such a name. I'm here to say that I did
-think long (seven months) and hard.
+to an existing UNIX-based script enhances its portability to Windows
+(since it's impossible to override the C<qx()> builtin, it's exported
+as C<qv()>).

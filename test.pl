@@ -82,6 +82,6 @@ $id2->optset(qw(REMOVED));
 my @removed = $id2->parseREMOVED(qw(r y x=s));
 local $, = ' ';
 print "Removed '@removed', left '@{[$id2->prog, $id2->opts, $id2->args]}'\n";
-print "NOTE: this test sets the 'noexec' class attribute so no exec happens\n";
+print "NOTE: this test sets the 'noexec' class attr so no exec will occur\n";
 Argv->noexec(1);
 $id2->exec(qw(-));

@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.01';
+$VERSION = '1.04';
 @ISA = qw(Exporter);
 
 use constant MSWIN	=> $^O =~ /MSWin32|Windows_NT/i;
@@ -21,7 +21,7 @@ my $class = __PACKAGE__;
 # the class attr if called as a class method. They return the instance
 # attr if it's defined, the class attr otherwise. The method name is
 # lower-case; e.g. 'qxargs'. The default value of each attribute comes
-# from the hash value but may be overridden in the environment as shown.
+# from the hash value which may be overridden in the environment.
 use vars qw(%Argv);
 %Argv = (
     AUTOCHOMP	=> $ENV{ARGV_AUTOCHOMP} || 0,
@@ -30,13 +30,16 @@ use vars qw(%Argv);
     AUTOQUOTE	=> defined($ENV{ARGV_AUTOQUOTE}) ? $ENV{ARGV_AUTOQUOTE} : 1,
     DBGLEVEL	=> $ENV{ARGV_DBGLEVEL} || 0,
     DFLTSETS	=> {'' => 1},
-    EXECWAIT	=> defined($ENV{ARGV_EXECWAIT}) ? $ENV{ARGV_EXECWAIT} : 1,
-    INPATHNORM	=> $ENV{ARGV_INPATHNORM} || scalar(MSWIN),
+    ENVP	=> undef,
+    EXECWAIT	=> defined($ENV{ARGV_EXECWAIT}) ?
+					    $ENV{ARGV_EXECWAIT} : scalar(MSWIN),
+    INPATHNORM	=> $ENV{ARGV_INPATHNORM} || 0,
     NOEXEC	=> $ENV{ARGV_NOEXEC} || 0,
     OUTPATHNORM	=> $ENV{ARGV_OUTPATHNORM} || 0,
     QXARGS	=> $ENV{ARGV_QXARGS} || (MSWIN ? 16 : 128),
     QXFAIL	=> $ENV{ARGV_QXFAIL} || 0,
-    QUIET	=> defined($ENV{ARGV_QUIET}) ? $ENV{ARGV_QUIET} : 0,
+    QUIET	=> defined($ENV{ARGV_QUIET})  ? $ENV{ARGV_QUIET}  : 0,
+    STDIN	=> defined($ENV{ARGV_STDIN})  ? $ENV{ARGV_STDIN}  : 0,
     STDOUT	=> defined($ENV{ARGV_STDOUT}) ? $ENV{ARGV_STDOUT} : 1,
     STDERR	=> defined($ENV{ARGV_STDERR}) ? $ENV{ARGV_STDERR} : 2,
     SYFAIL	=> $ENV{ARGV_SYFAIL} || 0,
@@ -49,9 +52,10 @@ use vars qw(%Argv);
 # and are explained in the PODs.
 sub gen_exec_method {
     my $meta = shift;
-    no strict 'refs'; # need to evaluate $meta as a symbolic ref
-    my @data = @_ ? @_ : keys %{$meta};
+    no strict 'refs'; # must evaluate $meta as a symbolic ref
+    my @data = @_ ? map {uc} @_ : keys %{$meta};
     for my $attr (@data) {
+	$$meta{$attr} ||= 0;
 	my $method = lc $attr;
 	*$method = sub {
 	    my $self = shift;
@@ -115,11 +119,12 @@ sub gen_exec_method {
     }
 }
 
+# Generate all the attribute methods declared in %Argv above.
 $class->gen_exec_method;
 
-# Generate two methods for diverting stdout and stderr in qx().
+# Generate methods for diverting stdin, stdout, and stderr in ->qx.
 {
-    my %streams = (stdout => 1, stderr => 2);
+    my %streams = (stdin => 1, stdout => 1, stderr => 2);
     for my $name (keys %streams) {
 	my $method = "_qx_$name";
 	no strict 'refs';
@@ -128,7 +133,10 @@ $class->gen_exec_method;
 	    my $r_cmd = shift;
 	    my $nfd = shift;
 	    my $fd = $streams{$name};
-	    if ($nfd == 0) {
+	    if ($fd == 0) {
+		warn "Error: illegal value '$nfd' for $name" if $nfd > 0;
+		push(@$r_cmd, "<" . (MSWIN ? 'NUL' : '/dev/null')) if $nfd < 0;
+	    } elsif ($nfd == 0) {
 		push(@$r_cmd, "$fd>" . (MSWIN ? 'NUL' : '/dev/null'));
 	    } elsif ($nfd == (3-$fd)) {
 		push(@$r_cmd, sprintf "%d>&%d", $fd, 3-$fd);
@@ -257,12 +265,19 @@ sub new {
 	# Some cloners are fast but not commonly installed, others the
 	# reverse. We try them in order of speed and fall back to
 	# Data::Dumper which is slow but core Perl as of 5.6.0. I could
-	# just inherit from Clone or Storable but want to not require
+	# just inherit from Clone or Storable but want to not force
 	# users who don't need cloning to install them.
 	eval {
-	    require Storable;
-	    $self = Storable::dclone($proto);
+	    require Clone;
+	    Clone->VERSION(0.12);       # 0.11 has a bug that breaks Argv
+	    $self = Clone::clone($proto);
 	};
+	if ($@) {
+	    eval {
+		require Storable;
+		$self = Storable::dclone($proto);
+	    };
+	}
 	if ($@) {
 	    require Data::Dumper;
 	    # Older Perl versions may not have the XS interface installed,
@@ -274,7 +289,7 @@ sub new {
 									if $@;
 	    eval $copy;
 	}
-	die $@ if $@;
+	die $@ if $@ || !$self;
     } else {
 	$self = {};
 	$self->{AV_PROG} = [];
@@ -486,9 +501,10 @@ sub extract {
 # Quotes @_ in place against shell expansion. Usually called via autoquote attr
 sub quote {
     my $self = shift;
+    my $inpathnorm = $self->inpathnorm;
     for (@_) {
 	# If requested, change / for \ in Windows file paths.
-	s%/%\\%g if $self->inpathnorm;
+	s%/%\\%g if $inpathnorm;
 	# Skip arg if already quoted ...
 	next if m%^".*"$%s;
 	# Special case - turn internal newlines back to literal \n on Win32
@@ -593,33 +609,58 @@ sub fail {
     return $self;
 }
 
+# Convert lines to UNIX (/) format iff they represent file pathnames.
+sub unixpath {
+    my $self = shift;
+    for (@_) {
+	chomp(my $chomped = $_);
+	s%\\%/%g if -e $chomped;
+    }
+}
+
+# A no-op except it prints the current state of the object to stderr.
+sub dump {
+    my $self = shift;
+    (my $obj = shift || 'argv') =~ s%^\$%%;
+    require Data::Dumper;
+    print STDERR Data::Dumper->new([$self], [$obj])->Dumpxs;
+    return $self;
+}
+
 # Hidden method for printing debug output.
 sub _dbg {
     my $self = shift;
-    my($prefix, $fh, @txt) = @_;
-    $class->quote(@txt);
+    my($level, $prefix, $fh, @txt) = @_;
+    $class->inpathnorm(0)->quote(@txt);
+    $self->dump if $level >= 3;
     print $fh "$prefix @txt\n";
 }
 
 # Wrapper around Perl's exec().
 sub exec {
-    return $class->new(@_)->system if !ref($_[0]) || ref($_[0]) eq 'HASH';
+    $class->new(@_)->exec if !ref($_[0]) || ref($_[0]) eq 'HASH';
     my $self = shift;
     if ((ref($self) ne $class) && $self->ipc_childsafe) {
 	exit($self->system(@_) || $self->ipc_childsafe->finish);
     } elsif (MSWIN && $self->execwait) {
 	exit $self->system(@_);
     } else {
+	my $envp = $self->envp;
 	my $dbg = $self->dbglevel;
 	my @cmd = (@{$self->{AV_PROG}},
 			    $self->_sets2opts(@_), @{$self->{AV_ARGS}});
-	my($ofd, $efd) = ($self->stdout, $self->stderr);
 	if ($self->noexec) {
-	    $self->_dbg('-', \*STDERR, @cmd);
+	    $self->_dbg($dbg, '-', \*STDERR, @cmd);
 	} else {
-	    $self->_dbg('+', \*STDERR, @cmd) if $dbg;
+	    my($ifd, $ofd, $efd) = ($self->stdin, $self->stdout, $self->stderr);
+	    $self->_dbg($dbg, '+', \*STDERR, @cmd) if $dbg;
+	    open(_I, '>&STDIN');
 	    open(_O, '>&STDOUT');
 	    open(_E, '>&STDERR');
+	    if ($ifd) {
+		warn "Warning: illegal value '$ifd' for stdin" if $ifd > 0;
+		close(STDIN) if $ifd < 0;
+	    }
 	    if ($ofd == 2) {
 		open(STDOUT, '>&STDERR') || warn "Can't dup stdout";
 	    } elsif ($self->quiet) {
@@ -634,8 +675,10 @@ sub exec {
 		close(STDERR) if !$efd;
 		warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
 	    }
+	    local %ENV = $envp ? %$envp : %ENV;
 	    if (!CORE::exec(@cmd)) {
 		my $error = "$!";
+		open(STDOUT, '>&_I'); close(_I);
 		open(STDOUT, '>&_O'); close(_O);
 		open(STDERR, '>&_E'); close(_E);
 		die "$0: $cmd[0]: $error\n";
@@ -652,7 +695,7 @@ sub _ipccmd {
     if (@_) {
 	$cmd = "@_";
     } else {
-	$cmd =~ s/^\w+\s*(.*)/$1/;
+	$cmd =~ s/^\w+\s*//;
     }
     # Hack - there's an "impedance mismatch" between instance
     # methods in this class and the class methods in
@@ -668,8 +711,9 @@ sub _ipccmd {
 sub system {
     return $class->new(@_)->system if !ref($_[0]) || ref($_[0]) eq 'HASH';
     my $self = shift;
+    my $envp = $self->envp;
     my $rc = 0;
-    my($ofd, $efd) = ($self->stdout, $self->stderr);
+    my($ifd, $ofd, $efd) = ($self->stdin, $self->stdout, $self->stderr);
     $self->args($self->glob) if $self->autoglob;
     my @prog = @{$self->{AV_PROG}};
     my @opts = $self->_sets2opts(@_);
@@ -681,8 +725,11 @@ sub system {
 			    ($childsafe && ref($self) ne $class)) &&
 			    $self->autoquote);
     my @cmd = (@prog, @opts, @args);
+    my $dbg = $self->dbglevel;
     if ((ref($self) ne $class) && $childsafe) {
 	$self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
+	$self->warning("cannot change \%ENV of child process") if $envp;
+	$self->warning("cannot close stdin of child process") if $ifd;
 	my %results = $self->_ipccmd(@cmd);
 	$? = $rc = $results{status} << 8;
 	if ($self->quiet) {
@@ -700,15 +747,19 @@ sub system {
 	    print STDERR @{$results{stderr}} if $efd && @{$results{stderr}};
 	}
     } else {
-	my $dbg = $self->dbglevel;
-	# Reset to defaults in dbg mode
+	# Reset to defaults in dbg mode (what's this for?)
 	($ofd, $efd) = (1, 2) if defined($dbg) && $dbg > 2;
 	if ($self->noexec) {
-	    $self->_dbg('-', \*STDERR, @cmd);
+	    $self->_dbg($dbg, '-', \*STDERR, @cmd);
 	    return 0;
 	}
+	open(_I, '>&STDIN');
 	open(_O, '>&STDOUT');
 	open(_E, '>&STDERR');
+	if ($ifd) {
+	    warn "Warning: illegal value '$ifd' for stdin" if $ifd > 0;
+	    close(STDIN) if $ifd < 0;
+	}
 	if ($ofd == 2) {
 	    open(STDOUT, '>&STDERR') || warn "Can't dup stdout";
 	} elsif ($self->quiet) {
@@ -723,23 +774,26 @@ sub system {
 	    close(STDERR) if !$efd;
 	    warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
 	}
+	local %ENV = $envp ? %$envp : %ENV;
 	my $limit = $self->syxargs;
 	if ($limit && @args) {
 	    while (my @chunk = splice(@args, 0, $limit)) {
 		$self->_addstats("@prog", scalar @chunk)
 						    if defined(%Argv::Summary);
 		@cmd = (@prog, @opts, @chunk);
-		$self->_dbg('+', \*_E, @cmd) if $dbg;
+		$self->_dbg($dbg, '+', \*_E, @cmd) if $dbg;
 		$rc |= CORE::system @cmd;
 	    }
 	} else {
 	    $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
-	    $self->_dbg('+', \*_E, @cmd) if $dbg;
+	    $self->_dbg($dbg, '+', \*_E, @cmd) if $dbg;
 	    $rc = CORE::system @cmd;
 	}
+	open(STDOUT, '>&_I'); close(_I);
 	open(STDOUT, '>&_O'); close(_O);
 	open(STDERR, '>&_E'); close(_E);
     }
+    print STDERR "+ (\$? == $?)\n" if $dbg > 1;
     $self->fail($self->syfail) if $?;
     return $rc;
 }
@@ -748,6 +802,7 @@ sub system {
 sub qx {
     return $class->new(@_)->qx if !ref($_[0]) || ref($_[0]) eq 'HASH';
     my $self = shift;
+    my $envp = $self->envp;
     my @prog = @{$self->{AV_PROG}};
     my @opts = $self->_sets2opts(@_);
     my @args = @{$self->{AV_ARGS}};
@@ -762,12 +817,14 @@ sub qx {
     my @cmd =(@prog, @opts, @args);
     my @data;
     my $dbg = 0;
-    my($ofd, $efd) = ($self->stdout, $self->stderr);
+    my($ifd, $ofd, $efd) = ($self->stdin, $self->stdout, $self->stderr);
     my $noexec = $self->noexec;
     if ($childsafe) {
 	$self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
+	$self->warning("cannot change \%ENV of child process") if $envp;
+	$self->warning("cannot close stdin of child process") if $ifd;
 	if ($noexec) {
-	    $self->_dbg('-', \*STDERR, @cmd);
+	    $self->_dbg($dbg, '-', \*STDERR, @cmd);
 	} else {
 	    my %results = $self->_ipccmd(@cmd);
 	    $? = $results{status} << 8;
@@ -786,8 +843,9 @@ sub qx {
 	}
     } else {
 	$dbg = $self->dbglevel;
-	# Reset to defaults in dbg mode
+	# Reset to defaults in dbg mode (what's this for?)
 	($ofd, $efd) = (1, 2) if defined($dbg) && $dbg > 2;
+	local %ENV = $envp ? %$envp : %ENV;
 	my $limit = $self->qxargs;
 	if ($limit && @args) {
 	    while (my @chunk = splice(@args, 0, $limit)) {
@@ -795,9 +853,9 @@ sub qx {
 						    if defined(%Argv::Summary);
 		@cmd = (@prog, @opts, @chunk);
 		if ($noexec) {
-		    $self->_dbg('-', \*STDERR, @cmd);
+		    $self->_dbg($dbg, '-', \*STDERR, @cmd);
 		} else {
-		    $self->_dbg('+', \*STDERR, @cmd) if $dbg;
+		    $self->_dbg($dbg, '+', \*STDERR, @cmd) if $dbg;
 		    $self->_qx_stderr(\@cmd, $efd);
 		    $self->_qx_stdout(\@cmd, $ofd);
 		    push(@data, CORE::qx(@cmd));
@@ -806,22 +864,18 @@ sub qx {
 	} else {
 	    $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
 	    if ($noexec) {
-		$self->_dbg('-', \*STDERR, @cmd);
+		$self->_dbg($dbg, '-', \*STDERR, @cmd);
 	    } else {
-		$self->_dbg('+', \*STDERR, @cmd) if $dbg;
+		$self->_dbg($dbg, '+', \*STDERR, @cmd) if $dbg;
 		$self->_qx_stderr(\@cmd, $efd);
 		$self->_qx_stdout(\@cmd, $ofd);
 		@data = CORE::qx(@cmd);
 	    }
 	}
     }
+    print STDERR "+ (\$? == $?)\n" if $dbg > 1;
     $self->fail($self->qxfail) if $?;
-    if (MSWIN && $self->outpathnorm) {
-	for (@data) {
-	    chomp(my $chomped = $_);
-	    s%\\%/%g if -e $chomped;
-	}
-    }
+    $self->unixpath(@data) if MSWIN && $self->outpathnorm;
     if (wantarray) {
 	print map {"+ <- $_"} @data if @data && $dbg >= 2;
 	chomp(@data) if $self->autochomp;
@@ -837,7 +891,11 @@ sub qx {
 *qv = \&qx;
 
 # Internal - provide a warning with std format and caller's context.
-sub warning { my $self = shift; carp("Warning: ${$self->{AV_PROG}}[-1]: ", @_) }
+sub warning {
+    my $self = shift;
+    (my $prog = $0) =~ s%.*[/\\]%%;
+    carp('Warning: ', ${$self->{AV_PROG}}[-1] || $prog, ': ', @_);
+}
 
 1;
 
@@ -1127,6 +1185,13 @@ useful on Windows where the invoking shell does not do this for you.
 Automatic use of I<glob> on Windows can be enabled via the I<autoglob>
 method (vide infra).
 
+=item * dump
+
+A no-op except for printing the state of the invoking instance to
+stderr. Potentially useful for debugging in situations where access to
+I<perl -d> is limited, e.g. across a socket connection or in a
+crontab. Invoked automatically at I<dbglevel=3>.
+
 =back
 
 =head2 EXECUTION METHODS
@@ -1285,6 +1350,20 @@ error as execution continues, e.g.
     my $rc = 0;
     $obj->autofail(\$rc);
 
+=item * envp
+
+Allows a different environment to be provided during execution of the
+object. This setting is in scope only for the child process and will
+not affect the environment of the current process.  Takes a hashref:
+
+    my %newenv = %ENV;
+    $newenv{PATH} .= ':/usr/ucb';
+    delete @newenv{qw(TERM LANG LD_LIBRARY_PATH)};
+    $obj->envp(\%newenv);
+
+Subsequent invocations of I<$obj> will add I</usr/ucb> to PATH and
+subtract TERM, LANG, and LD_LIBRARY_PATH;
+
 =item * syfail,qxfail
 
 Similar to C<autofail> but apply only to C<system()> or C<qx()>
@@ -1304,9 +1383,9 @@ Set by default.
 
 =item * dbglevel
 
-Sets the debug level. Level 0 (the default) is no debugging, 1 prints
-each command before executing it, and higher levels offer progressively
-more output.
+Sets the debug level. Level 0 (the default) means no debugging, level 1
+prints each command before executing it, and higher levels offer
+progressively more output. All debug output goes to stderr.
 
 =item * dfltsets
 
@@ -1327,8 +1406,8 @@ the new process in the background. Set by default.
 =item * inpathnorm
 
 If set, normalizes pathnames to their native format just before
-executing. This is set by default on Windows only, thus converting
-/x/y/z to \x\y\z.
+executing. This is NOT set by default; even when set it's a no-op
+except on Windows, where it converts /x/y/z to \x\y\z.
 
 =item * outpathnorm
 
@@ -1387,7 +1466,7 @@ a redirection of STDOUT using the <$obj-E<gt>stdout> method above.
 
 =item * attropts
 
-The attributes above can be set via method calls (e.g.
+The above attributes can be set via method calls (e.g.
 C<$obj-E<gt>dbglevel(1)>) or environment variables (ARGV_DBGLEVEL=1). Use
 of the <$obj-E<gt>attropts> method allows them to be parsed from the command
 line as well, e.g. I<myscript -/dbglevel 1>. If invoked as a class
@@ -1406,11 +1485,11 @@ would cause the script to parse the following command line:
 so as to remove the C<-/noexec 1 -/dbglevel 2> and set the two class
 attrs.  The C<-/> prefix is chosen to prevent conflicts with "real"
 flags. Abbreviations are allowed as long as they're unique within the
-set of -/ flags. Whereas
+set of -/ flags. As an instance method:
 
     $obj->attropts;
 
-would parse the current value of C<$obj-E<gt>args> and run
+it will parse the current value of C<$obj-E<gt>args> and run
 
     $obj->foo(1);
 
@@ -1423,7 +1502,9 @@ for every instance of C<-/foo=1> found there.
 This module is known to work on Solaris 2.5-8 and Windows 2000 SP2, and
 with perl 5.004_04 and 5.6.  As these platforms are quite different,
 there should be no I<major> portability issues, but please send bug
-reports or patches to the address below.
+reports or patches to the address below. Recent testing is with
+newer (5.6+) versions of Perl so some backporting may be necessary
+for older Perls.
 
 =head1 AUTHOR
 
