@@ -189,3 +189,9 @@ Revision history for Perl extension Argv.
 1.06 Fri Dec 21 07:54:24 EST 2001
 	- bugfix to let subclasses interface with their own
 	  in-process implementations.
+
+1.07 Sun Jan 13 22:23:38 EST 2002
+	- Cosmetic improvements to -> envp work (tighter scoping, no
+	  semantic effect).
+	- Cosmetic improvement to dbglevel=1 verbosity quoting.
+	- Fixed ->exec return codes on Windows ($?<<=8).

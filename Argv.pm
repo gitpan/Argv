@@ -1,9 +1,9 @@
 package Argv;
 
-$VERSION = '1.06';
+$VERSION = '1.07';
 @ISA = qw(Exporter);
 
-use constant MSWIN	=> $^O =~ /MSWin32|Windows_NT/i;
+use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
 
 # To support the "FUNCTIONAL INTERFACE"
 @EXPORT_OK = qw(system exec qv MSWIN);
@@ -505,7 +505,7 @@ sub quote {
     my $inpathnorm = $self->inpathnorm;
     for (@_) {
 	# If requested, change / for \ in Windows file paths.
-	s%/%\\%g if $inpathnorm;
+	s%/%\\%g if MSWIN && $inpathnorm && !ref($inpathnorm);
 	# Skip arg if already quoted ...
 	next if m%^".*"$%s;
 	# Special case - turn internal newlines back to literal \n on Win32
@@ -632,9 +632,10 @@ sub dump {
 sub _dbg {
     my $self = shift;
     my($level, $prefix, $fh, @txt) = @_;
-    $class->inpathnorm(0)->quote(@txt);
+    my @tmp = @txt;
+    for (@tmp) { $_ = qq("$_") if /\s/ }
     $self->dump if $level >= 3;
-    print $fh "$prefix @txt\n";
+    print $fh "$prefix @tmp\n";
 }
 
 # Wrapper around Perl's exec().
@@ -644,7 +645,7 @@ sub exec {
     if ((ref($self) ne $class) && $self->ipc_childsafe) {
 	exit($self->system(@_) || $self->ipc_childsafe->finish);
     } elsif (MSWIN && $self->execwait) {
-	exit $self->system(@_);
+	exit($self->system(@_) >> 8);
     } else {
 	my $envp = $self->envp;
 	my $dbg = $self->dbglevel;
@@ -676,8 +677,15 @@ sub exec {
 		close(STDERR) if !$efd;
 		warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
 	    }
-	    local %ENV = $envp ? %$envp : %ENV;
-	    if (!CORE::exec(@cmd)) {
+	    my $rc;
+	    if ($envp) {
+		local %ENV = %$envp;
+		$rc = CORE::exec(@cmd);
+	    } else {
+		$rc = CORE::exec(@cmd);
+	    }
+	    # Shouldn't get here but defensive programming and all that ...
+	    if ($rc) {
 		my $error = "$!";
 		open(STDOUT, '>&_I'); close(_I);
 		open(STDOUT, '>&_O'); close(_O);
@@ -775,7 +783,6 @@ sub system {
 	    close(STDERR) if !$efd;
 	    warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
 	}
-	local %ENV = $envp ? %$envp : %ENV;
 	my $limit = $self->syxargs;
 	if ($limit && @args) {
 	    while (my @chunk = splice(@args, 0, $limit)) {
@@ -783,12 +790,22 @@ sub system {
 						    if defined(%Argv::Summary);
 		@cmd = (@prog, @opts, @chunk);
 		$self->_dbg($dbg, '+', \*_E, @cmd) if $dbg;
-		$rc |= CORE::system @cmd;
+		if ($envp) {
+		    local %ENV = %$envp;
+		    $rc |= CORE::system @cmd;
+		} else {
+		    $rc |= CORE::system @cmd;
+		}
 	    }
 	} else {
 	    $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
 	    $self->_dbg($dbg, '+', \*_E, @cmd) if $dbg;
-	    $rc = CORE::system @cmd;
+	    if ($envp) {
+		local %ENV = %$envp;
+		$rc = CORE::system @cmd;
+	    } else {
+		$rc = CORE::system @cmd;
+	    }
 	}
 	open(STDOUT, '>&_I'); close(_I);
 	open(STDOUT, '>&_O'); close(_O);
@@ -845,7 +862,6 @@ sub qx {
 	$dbg = $self->dbglevel;
 	# Reset to defaults in dbg mode (what's this for?)
 	($ofd, $efd) = (1, 2) if defined($dbg) && $dbg > 2;
-	local %ENV = $envp ? %$envp : %ENV;
 	my $limit = $self->qxargs;
 	if ($limit && @args) {
 	    while (my @chunk = splice(@args, 0, $limit)) {
@@ -858,7 +874,12 @@ sub qx {
 		    $self->_dbg($dbg, '+', \*STDERR, @cmd) if $dbg;
 		    $self->_qx_stderr(\@cmd, $efd);
 		    $self->_qx_stdout(\@cmd, $ofd);
-		    push(@data, CORE::qx(@cmd));
+		    if ($envp) {
+			local %ENV = %$envp;
+			push(@data, CORE::qx(@cmd));
+		    } else {
+			push(@data, CORE::qx(@cmd));
+		    }
 		}
 	    }
 	} else {
@@ -869,7 +890,12 @@ sub qx {
 		$self->_dbg($dbg, '+', \*STDERR, @cmd) if $dbg;
 		$self->_qx_stderr(\@cmd, $efd);
 		$self->_qx_stdout(\@cmd, $ofd);
-		@data = CORE::qx(@cmd);
+		if ($envp) {
+		    local %ENV = %$envp;
+		    @data = CORE::qx(@cmd);
+		} else {
+		    @data = CORE::qx(@cmd);
+		}
 	    }
 	}
     }
@@ -1321,6 +1347,9 @@ examples:
 	$obj->stdout;             # same as above
 	$foo = $obj->stdout;      # get attribute value
 	$obj2 = $obj->stdout(1);  # set to 1 (temporary), return $obj
+
+WARNING: this attribute-stacking has turned out to be a bad idea. Its
+use is now deprecated.
 
 =back
 
