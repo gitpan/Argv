@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.11';
+$VERSION = '1.12';
 @ISA = qw(Exporter);
 
 use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
@@ -806,6 +806,21 @@ sub exec {
     }
 }
 
+sub lastresults {
+    my $self = shift;
+    if (defined(wantarray)) {
+	my @qxarr = @{$self->{AV_LASTRESULTS}};
+	my $rc = shift @qxarr;
+	if (wantarray) {
+	    return @qxarr;
+	} else {
+	    return $rc;
+	}
+    } else {
+	$self->{AV_LASTRESULTS} = \@_;
+    }
+}
+
 # Internal - service method for system/exec to call into IPC::ChildSafe.
 sub _ipccmd {
     my $self = shift;
@@ -931,7 +946,10 @@ sub system {
 	open(STDERR, '>&_E'); close(_E);
     }
     print STDERR "+ (\$? == $?)\n" if $dbg > 1;
-    $self->fail($self->syfail) if $?;
+    if ($?) {
+	$self->lastresults($?>>8, ());
+	$self->fail($self->syfail);
+    }
     return $rc;
 }
 
@@ -964,7 +982,6 @@ sub qx {
 	    $self->_dbg($dbg, '-', \*STDERR, @cmd);
 	} else {
 	    my %results = $self->_ipccmd(@cmd);
-	    $? = $rc = $results{status} << 8;
 	    if ($ofd == 0) {
 		# ignore the results
 	    } elsif ($ofd == 1) {
@@ -980,6 +997,7 @@ sub qx {
 		print STDERR @{$results{stderr}} if $efd;
 		warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
 	    }
+	    $? = $rc = $results{status} << 8;
 	}
     } else {
 	$dbg = $self->dbglevel;
@@ -1036,7 +1054,10 @@ sub qx {
 	$? = $rc if $rc && ! $?;
     }
     print STDERR "+ (\$? == $?)\n" if $dbg > 1;
-    $self->fail($self->qxfail) if $?;
+    if ($?) {
+	$self->lastresults($?>>8, @data);
+	$self->fail($self->qxfail);
+    }
     $self->unixpath(@data) if MSWIN && $self->outpathnorm;
     if (wantarray) {
 	print map {"+ <- $_"} @data if @data && $dbg >= 2;
@@ -1485,20 +1506,20 @@ case a shell is always used. This behavior can be toggled with
 C<$obj-E<gt>autoquote>.  I<Note: if and when Perl 5.6 fixes this "bug",
 Argv will be changed to examine the value of $]>.
 
-=item * exec()
+=item * exec([<optset-list>])
 
 Similar to I<system> above, but never returns. On Windows, it blocks
-until the new process finishes for a more UNIX-like behavior than
-the I<exec> implemented by the C runtime library on Windows, if
-the B<execwait> attribute is set. This is actually implemented as
+until the new process finishes for a more UNIX-like behavior than the
+I<exec> implemented by the MSVCRT, if the B<execwait> attribute is set.
+This is actually implemented as
 
-    exit $obj->system(LIST);
+    exit($obj->system(LIST));
 
-and thus all C<system> shell-quoting issues apply
+on Windows, and thus all C<system> shell-quoting issues apply
 
 Option sets are handled as described in I<system> above.
 
-=item * qx()
+=item * qx([<optset-list>])
 
 Same semantics as described in I<perlfunc/"qx"> but has the capability
 to process only a set command line length at a time to avoid exceeding
@@ -1613,7 +1634,10 @@ as args to the function on failure. Thus:
 
     $obj->autofail([&handler, $arg1, $arg2]);
 
-Will call C<handler($arg1, $arg2)> on error.
+Will call C<handler($arg1, $arg2)> on error. It's even possible to
+turn the handler into a C<fake method> by passing the object ref:
+
+    $obj->autofail([&handler, $obj, $arg1, $arg2]);
 
 If the reference is to a scalar, the scalar is incremented for each
 error and execution continues. Switching to a class method example:
@@ -1623,6 +1647,29 @@ error and execution continues. Switching to a class method example:
     [do stuff involving Argv objects]
     print "There were $rc failures counted by Argv\n";
     exit($rc);
+
+=item * syfail,qxfail
+
+Similar to C<autofail> but apply only to C<system()> or C<qx()>
+respectively. Unset by default.
+
+=item * lastresults
+
+Within an C<autofail> handler this may be used to get access to the
+results of the failed execution.  The return code and stdout of the
+last command will be stored and can be retrieved as follows:
+
+    # set up handler as a fake method (see above)
+    $obj->autofail([&handler, $obj, $arg1, $arg2]);
+
+    # then later, in the handler
+    my $self = shift;			# get the obj ref
+    my @output = $self->lastresults;	# gives stdout in list context
+    my $rc = $self->lastresults;	# and retcode in scalar
+
+Note that stdout is only available for -E<gt>qx, not for -E<gt>system.
+And stderr is never available unless you've explicitly redirected it to
+stdout. This is just the way Perl I/O works.
 
 =item * envp
 
@@ -1638,11 +1685,6 @@ not affect the environment of the current process.  Takes a hashref:
 Subsequent invocations of I<$obj> will add I</usr/ucb> to PATH and
 subtract TERM, LANG, and LD_LIBRARY_PATH.
 
-=item * syfail,qxfail
-
-Similar to C<autofail> but apply only to C<system()> or C<qx()>
-respectively. Unset by default.
-
 =item * autoglob
 
 If set, the C<glob()> function is applied to the operands
@@ -1651,12 +1693,12 @@ If set, the C<glob()> function is applied to the operands
 =item * autoquote
 
 If set, the operands are automatically quoted against shell expansion
-before C<system()> on Windows and C<qx()> on all platforms (since C<qx>
-always invokes a shell, and C<system()> always does so on Windows).
-Set by default.
+before C<system()> on Windows and C<qx()> on all platforms (since
+C<qx()> I<always> invokes a shell and C<system()> always does so on
+Windows).  Set by default.
 
-An individual word of an argv can "opt out" of autoquoting by
-using a leading '^'. For instance:
+An individual word of an argv can opt out of autoquoting by using a
+leading '^'. For instance:
 
     ('aa', 'bb', "^I'll do this one myself, thanks!", 'cc')
 
@@ -1725,11 +1767,7 @@ that reported by the system (C<getconf ARG_MAX> on POSIX platforms,
     $obj->qxargs(256);		# limit cmdlines to 256 arguments
 
 Notes: The actual cmdline length limit is somewhat less than ARG_MAX on
-POSIX systems for reasons too complex to explain here. Also, the
-byte-limiting feature is a little more costly in startup time as the
-POSIX module, which is fairly large, is required. If you're sensitive
-to startup time and unlikely to have huge cmdlines, the old-style
-argument limit may make sense.
+POSIX systems for reasons too complex to explain here.
 
 =item * syxargs
 

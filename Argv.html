@@ -392,18 +392,18 @@ case a shell is always used. This behavior can be toggled with
 <a href="#item_autoquote"><code>$obj-&gt;autoquote</code></a>.  <em>Note: if and when Perl 5.6 fixes this ``bug'',
 Argv will be changed to examine the value of $]</em>.</p>
 <p></p>
-<li><strong><code>exec()</code></strong><br />
+<li><strong>exec([&lt;optset-list&gt;])</strong><br />
 </li>
 Similar to <em>system</em> above, but never returns. On Windows, it blocks
-until the new process finishes for a more UNIX-like behavior than
-the <em>exec</em> implemented by the C runtime library on Windows, if
-the <strong>execwait</strong> attribute is set. This is actually implemented as
+until the new process finishes for a more UNIX-like behavior than the
+<em>exec</em> implemented by the MSVCRT, if the <strong>execwait</strong> attribute is set.
+This is actually implemented as
 <pre>
-    exit $obj-&gt;system(LIST);</pre>
-<p>and thus all <a href="#item_system"><code>system</code></a> shell-quoting issues apply</p>
+    exit($obj-&gt;system(LIST));</pre>
+<p>on Windows, and thus all <a href="#item_system"><code>system</code></a> shell-quoting issues apply</p>
 <p>Option sets are handled as described in <em>system</em> above.</p>
 <p></p>
-<li><strong><a name="item_qx"><code>qx()</code></a></strong><br />
+<li><strong><a name="item_qx">qx([&lt;optset-list&gt;])</a></strong><br />
 </li>
 Same semantics as described in <em>perlfunc/``qx''</em> but has the capability
 to process only a set command line length at a time to avoid exceeding
@@ -502,7 +502,10 @@ assumed to be a code-ref as above and the rest of the array is passed
 as args to the function on failure. Thus:</p>
 <pre>
     $obj-&gt;autofail([&amp;handler, $arg1, $arg2]);</pre>
-<p>Will call <code>handler($arg1, $arg2)</code> on error.</p>
+<p>Will call <code>handler($arg1, $arg2)</code> on error. It's even possible to
+turn the handler into a <code>fake method</code> by passing the object ref:</p>
+<pre>
+    $obj-&gt;autofail([&amp;handler, $obj, $arg1, $arg2]);</pre>
 <p>If the reference is to a scalar, the scalar is incremented for each
 error and execution continues. Switching to a class method example:</p>
 <pre>
@@ -511,6 +514,28 @@ error and execution continues. Switching to a class method example:</p>
     [do stuff involving Argv objects]
     print &quot;There were $rc failures counted by Argv\n&quot;;
     exit($rc);</pre>
+<p></p>
+<li><strong><a name="item_syfail%2cqxfail">syfail,qxfail</a></strong><br />
+</li>
+Similar to <a href="#item_autofail"><code>autofail</code></a> but apply only to <a href="#item_system"><code>system()</code></a> or <a href="#item_qx"><code>qx()</code></a>
+respectively. Unset by default.
+<p></p>
+<li><strong><a name="item_lastresults">lastresults</a></strong><br />
+</li>
+Within an <a href="#item_autofail"><code>autofail</code></a> handler this may be used to get access to the
+results of the failed execution.  The return code and stdout of the
+last command will be stored and can be retrieved as follows:
+<pre>
+    # set up handler as a fake method (see above)
+    $obj-&gt;autofail([&amp;handler, $obj, $arg1, $arg2]);</pre>
+<pre>
+    # then later, in the handler
+    my $self = shift;                   # get the obj ref
+    my @output = $self-&gt;lastresults;    # gives stdout in list context
+    my $rc = $self-&gt;lastresults;        # and retcode in scalar</pre>
+<p>Note that stdout is only available for -&gt;qx, not for -&gt;system.
+And stderr is never available unless you've explicitly redirected it to
+stdout. This is just the way Perl I/O works.</p>
 <p></p>
 <li><strong><a name="item_envp">envp</a></strong><br />
 </li>
@@ -525,11 +550,6 @@ not affect the environment of the current process.  Takes a hashref:
 <p>Subsequent invocations of <em>$obj</em> will add <em>/usr/ucb</em> to PATH and
 subtract TERM, LANG, and LD_LIBRARY_PATH.</p>
 <p></p>
-<li><strong><a name="item_syfail%2cqxfail">syfail,qxfail</a></strong><br />
-</li>
-Similar to <a href="#item_autofail"><code>autofail</code></a> but apply only to <a href="#item_system"><code>system()</code></a> or <a href="#item_qx"><code>qx()</code></a>
-respectively. Unset by default.
-<p></p>
 <li><strong><a name="item_autoglob">autoglob</a></strong><br />
 </li>
 If set, the <a href="#item_glob"><code>glob()</code></a> function is applied to the operands
@@ -538,11 +558,11 @@ If set, the <a href="#item_glob"><code>glob()</code></a> function is applied to 
 <li><strong><a name="item_autoquote">autoquote</a></strong><br />
 </li>
 If set, the operands are automatically quoted against shell expansion
-before <a href="#item_system"><code>system()</code></a> on Windows and <a href="#item_qx"><code>qx()</code></a> on all platforms (since <a href="#item_qx"><code>qx</code></a>
-always invokes a shell, and <a href="#item_system"><code>system()</code></a> always does so on Windows).
-Set by default.
-<p>An individual word of an argv can ``opt out'' of autoquoting by
-using a leading '^'. For instance:</p>
+before <a href="#item_system"><code>system()</code></a> on Windows and <a href="#item_qx"><code>qx()</code></a> on all platforms (since
+<a href="#item_qx"><code>qx()</code></a> <em>always</em> invokes a shell and <a href="#item_system"><code>system()</code></a> always does so on
+Windows).  Set by default.
+<p>An individual word of an argv can opt out of autoquoting by using a
+leading '^'. For instance:</p>
 <pre>
     ('aa', 'bb', &quot;^I'll do this one myself, thanks!&quot;, 'cc')</pre>
 <p>The '^' is stripped off and the rest of the string left alone.</p>
@@ -608,11 +628,7 @@ that reported by the system (<code>getconf ARG_MAX</code> on POSIX platforms,
     $obj-&gt;qxargs(-1);           # limit cmdlines to ARG_MAX bytes
     $obj-&gt;qxargs(256);          # limit cmdlines to 256 arguments</pre>
 <p>Notes: The actual cmdline length limit is somewhat less than ARG_MAX on
-POSIX systems for reasons too complex to explain here. Also, the
-byte-limiting feature is a little more costly in startup time as the
-POSIX module, which is fairly large, is required. If you're sensitive
-to startup time and unlikely to have huge cmdlines, the old-style
-argument limit may make sense.</p>
+POSIX systems for reasons too complex to explain here.</p>
 <p></p>
 <li><strong><a name="item_syxargs">syxargs</a></strong><br />
 </li>

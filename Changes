@@ -221,3 +221,6 @@ Revision history for Perl extension Argv.
 	  and lose $?. It still continues but now remembers $?.
 	- Feature: the ->argv() method now returns the entire
 	  command line when called with no arguments.
+
+1.12 Thu Jan 29 12:31:07 EST 2004
+	- Added ->lastresults method for use in exception handlers.
