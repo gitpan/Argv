@@ -10,7 +10,7 @@ use constant MSWIN	=> $^O =~ /win32/i;
 
 @EXPORT_OK = qw(system exec qv); # to support the "FUNCTIONAL INTERFACE"
 
-$VERSION = '0.34';
+$VERSION = '0.35';
 
 # Adapted from perltootc (see): an "eponymous meta-object" implementing
 # "translucent attributes".
@@ -113,11 +113,11 @@ sub ipc {
 
 # A class method which prints a summary of operations performed.
 sub summary {
-    shift;
+    my $class = shift;
     my($cmds, $operands);
     return unless %Argv::Summary;
-    my $fmt = "%20s: %4s\t%s\n";
-    printf STDERR $fmt, __PACKAGE__ . ' Summary', 'Cmds', 'Operands';
+    my $fmt = "%30s:  %4s\t%s\n";
+    printf STDERR $fmt, "$class SUMMARY", 'Cmds', 'Operands';
     for (keys %Argv::Summary) {
 	my @stats = @{$Argv::Summary{$_}};
 	$cmds += $stats[0];
@@ -129,8 +129,7 @@ sub summary {
 }
 
 # Constructor.
-sub new
-{
+sub new {
    my $proto = shift;
    my($class, $self);
    if (ref $proto) {
@@ -158,8 +157,7 @@ sub new
 
 # Instance methods; most class methods are auto-generated above.
 
-sub prog
-{
+sub prog {
    my $self = shift;
    if (@_ || !defined(wantarray)) {
       $self->dbg("setting prog to '@_'");
@@ -172,8 +170,7 @@ sub prog
    }
 }
 
-sub args
-{
+sub args {
    my $self = shift;
    if (@_ || !defined(wantarray)) {
       $self->dbg("setting args to '@_'");
@@ -186,8 +183,7 @@ sub args
    }
 }
 
-sub optset
-{
+sub optset {
    my $self = shift;
    for (@_) {
       my $set = uc $_;
@@ -234,8 +230,7 @@ sub optset
    return keys %{$self->{DESC}}; # this is the set of known optsets.
 }
 
-sub factor
-{
+sub factor {
    my $self = shift;
    my $pset = shift;
    return undef if ! $self->{DESC}{$pset};
@@ -267,8 +262,7 @@ sub factor
    return %vgra;
 }
 
-sub extract
-{
+sub extract {
    my $self = shift;
    my $set = shift;
    $self->optset($set) unless defined $self->{LINKAGE}{$set};
@@ -280,8 +274,7 @@ sub extract
    return @extracts;
 }
 
-sub quote
-{
+sub quote {
    my $self = shift;
    @_ = $self->args if !@_;
    for (@_) {
@@ -305,8 +298,7 @@ sub quote
    return @_;
 }
 
-sub glob
-{
+sub glob {
    my $self = shift;
    my(@orig, @globbed) = $self->args;
    if (! @orig) {
@@ -327,8 +319,7 @@ sub glob
    return @globbed > @orig;
 }
 
-sub _sets2opts
-{
+sub _sets2opts {
    my $self = shift;
    my(@sets, @opts);
    if (! @_) {
@@ -362,8 +353,7 @@ sub _addstats {
     $Argv::Summary{$prog} = $stats;
 }
 
-sub exec
-{
+sub exec {
    return Argv->new(@_)->exec if !ref($_[0]);
    my $self = shift;
    if ($self->ipc) {
@@ -386,8 +376,7 @@ sub exec
    }
 }
 
-sub system
-{
+sub system {
    return Argv->new(@_)->system if !ref($_[0]);
    my $self = shift;
    $self->glob if MSWIN && $self->autoglob;
@@ -395,15 +384,16 @@ sub system
    my @opts = $self->_sets2opts(@_);
    my @args = @{$self->{ARGS}};
    $self->quote(@opts, @args)
-	 if (MSWIN && (@prog + @opts + @args) > 1 && $self->autoquote);
+	 if (((MSWIN && (@prog + @opts + @args) > 1) || $self->ipc)
+						      && $self->autoquote);
    my @cmd = (@prog, @opts, @args);
    my $rc = 0;
    if ($self->noexec) {
       print STDERR "+ @cmd\n";
    } else {
       if ($self->ipc) {
-	 ($_) = @cmd > 1 ? "@cmd[1..$#cmd]" : ($cmd[0] =~ /^\w+\s*(.*)/);
-	 my %results = $self->ipc->cmd($_);
+	 my($s) = @cmd > 1 ? "@cmd[1..$#cmd]" : ($cmd[0] =~ /^\w+\s*(.*)/);
+	 my %results = $self->ipc->cmd($s);
 	 $? = $results{status} << 8;
 	 print STDOUT @{$results{stdout}} if $self->stdout;
 	 print STDERR @{$results{stderr}} if $self->stderr;
@@ -428,19 +418,18 @@ sub system
    return $rc;
 }
 
-sub qx
-{
+sub qx {
    my $self = shift;
    my @prog = @{$self->{PROG}};
    my @opts = $self->_sets2opts(@_);
    my @args = @{$self->{ARGS}};
    $self->quote(@opts, @args)
-	 if ((@prog + @opts + @args) > 1 && $self->autoquote);
+	 if (((@prog + @opts + @args) > 1 || $self->ipc) && $self->autoquote);
    my @data;
    if ($self->ipc) {
       my @cmd = (@prog, @opts, @args);
-      ($_) = @cmd > 1 ? "@cmd[1..$#cmd]" : ($cmd[0] =~ /^\w+\s*(.*)/);
-      my %results = $self->ipc->cmd($_);
+      my($s) = @cmd > 1 ? "@cmd[1..$#cmd]" : ($cmd[0] =~ /^\w+\s*(.*)/);
+      my %results = $self->ipc->cmd($s);
       $? = $results{status} << 8;
       print STDERR @{$results{stderr}} if $self->stderr;
       @data = @{$results{stdout}};
@@ -484,15 +473,13 @@ sub qx
 # Can't override qx() so we export an alias instead.
 sub qv { return Argv->new(@_)->qx }
 
-sub warning
-{
+sub warning {
    my $self = shift;
    carp("Warning: ${$self->{PROG}}[-1]: ", @_);
 }
 
 # Not documented; primarily for internal use.
-sub dbg
-{
+sub dbg {
    my $self = shift;
    my $level = $self->dbglevel;
    return unless $level;

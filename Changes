@@ -41,3 +41,7 @@ Revision history for Perl extension Argv.
 	  as an instance method.
 	- Renamed exported qxargv() to qv().
 	- Modified many methods to return the object in 'set' mode.
+
+0.35  Wed Dec  8 23:22:54 EST 1999
+	- Some cosmetic work.
+	- Improved integration with IPC::ChildSafe with quoting fixes.
