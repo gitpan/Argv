@@ -111,3 +111,11 @@ Revision history for Perl extension Argv.
 0.50 Wed Feb 16 11:52:40 EST 2000
 	- Added experimental AUTOLOAD capability, analogous
 	  to "perldoc Shell".
+
+0.51 Mon Apr  3 17:26:46 EDT 2000
+	- The 'quote' method now returns $self instead of @_.
+	  This is to emphasize the fact that it modifies @_ in place.
+	- Propagate class attributes into the env to set the defaults
+	  for child processes.
+	- Cleaned up issues related to Getopt::Long::Configure and
+	  default settings.

@@ -1,9 +1,9 @@
 package Argv;
 
-$VERSION = '0.50';
+$VERSION = '0.51';
 @ISA = qw(Exporter);
 
-use constant MSWIN	=> $^O =~ /win32/i;
+use constant MSWIN	=> $^O =~ /MSWin32|Windows_NT/i;
 
 # to support the "FUNCTIONAL INTERFACE"
 @EXPORT_OK = qw(system exec qv MSWIN);
@@ -83,11 +83,14 @@ sub gen_exec_method {
 			} else {
 			    $class->{$attr} = [shift, $class->{$attr}];
 			}
-			return $self;
 		    } else {
 			$class->{$attr} = shift;
-			return $self;
 		    }
+		    # If setting a class attribute, export it to the
+		    # env in case we fork a child also using Argv.
+		    my $ev = uc join('_', __PACKAGE__, $attr);
+		    $ENV{$ev} = $class->{$attr};
+		    return $self;
 		} else {
 		    $ret = $class->{$attr};
 		}
@@ -178,31 +181,34 @@ sub attropts {
 	$prefix = $cfg->{PREFIX};
     }
     require Getopt::Long;
-    Getopt::Long->VERSION(2.17); # has 'prefix_pattern'
-    my @configs = (qw(pass_through), "prefix_pattern=$prefix");
+    my $oldgetopt = Getopt::Long->VERSION < 2.17;
+    local $Getopt::Long::passthrough = 1;
+    local $Getopt::Long::genprefix = "($prefix)";
     my @flags = map {"$_=i"} ((map lc, keys %Argv::Argv), @_);
     my %opt;
-    Getopt::Long::Configure(@configs);
     if (ref $self) {
 	if ($r_argv) {
 	    local @ARGV = @$r_argv;
+	    @ARGV = map {s%^-/%--%; $_} @ARGV if $oldgetopt;
 	    Getopt::Long::GetOptions(\%opt, @flags);
 	    @$r_argv = @ARGV;
 	} else {
 	    local @ARGV = $self->args;
 	    if (@ARGV) {
+		@ARGV = map {s%^-/%--%; $_} @ARGV if $oldgetopt;
 		Getopt::Long::GetOptions(\%opt, @flags);
 		$self->args(@ARGV);
 	    }
 	}
     } elsif ($r_argv) {
 	local @ARGV = @$r_argv;
+	@ARGV = map {s%^-/%--%; $_} @ARGV if $oldgetopt;
 	Getopt::Long::GetOptions(\%opt, @flags);
 	@$r_argv = @ARGV;
     } elsif (@ARGV) {
+	@ARGV = map {s%^-/%--%; $_} @ARGV if $oldgetopt;
 	Getopt::Long::GetOptions(\%opt, @flags);
     }
-    Getopt::Long::Configure('default');
     for my $method (keys %opt) { $self->$method($opt{$method}) }
     return $self;
 }
@@ -407,14 +413,21 @@ sub factor {
     my($pset, $r_desc, $r_opts, $r_args, $r_cfg) = @_;
     my %vgra;
     {
-	require Getopt::Long;
-	Getopt::Long->VERSION(2.17); # faster, also has 'Configure()'
-	my @configs = $r_cfg ? @$r_cfg : qw(auto_abbrev pass_through);
-	push(@configs, 'debug') if $self->dbglevel == 5;
 	local @ARGV = @$r_args;
-	Getopt::Long::Configure(@configs);
-	Getopt::Long::GetOptions($self->{AV_LKG}{$pset}, @$r_desc) if @$r_desc;
-	Getopt::Long::Configure('default');
+	if ($r_desc && @$r_desc) {
+	    require Getopt::Long;
+	    if ($r_cfg && @$r_cfg) {
+		Getopt::Long->VERSION(2.23); # Configure() returns prev state
+		my $prev = Getopt::Long::Configure(@$r_cfg);
+		Getopt::Long::GetOptions($self->{AV_LKG}{$pset}, @$r_desc);
+		Getopt::Long::Configure($prev);
+	    } else {
+		local $Getopt::Long::passthrough = 1;
+		local $Getopt::Long::autoabbrev = 1;
+		local $Getopt::Long::debug = 1 if $self->dbglevel == 5;
+		Getopt::Long::GetOptions($self->{AV_LKG}{$pset}, @$r_desc);
+	    }
+	}
 	for (0..$#ARGV) { $vgra{$ARGV[$_]} = $_ }
     }
     my(@opts, @args);
@@ -452,18 +465,18 @@ sub quote {
 	next if m%^".*"$%s;
 	# Special case - turn internal newlines back to literal \n on Win32
 	s%\n%\\n%gs if MSWIN;
-	# ... or contains no special chars.
+	# Skip if contains no special chars.
 	next unless m%[^-=:_.\w\\/]% || tr%\n%%;
 	# Special case - leave things that look like redirections alone.
 	next if /^\d?(?:<{1,2})|(?:>{1,2})/;
 	# Now quote embedded quotes ...
 	$_ =~ s%(\\*)"%$1$1\\"%g;
-	# quote trailing \ so it won't quote the " ...
+	# quote a trailing \ so it won't quote the quote (!) ...
 	s%\\{1}$%\\\\%;
 	# and last the entire string.
 	$_ = qq("$_");
     }
-    return @_;
+    return $self;
 }
 
 # Submits @_ to Perl's glob() function. Usually invoked via autoglob attr.
@@ -536,7 +549,7 @@ sub fail {
 	} elsif ($val !~ /^\d*$/) {
 	    die $val;
 	} elsif ($val) {
-	    die "\n";
+	    exit $val;
 	}
     }
     return $self;
@@ -549,7 +562,7 @@ sub exec {
     if ((ref($self) ne __PACKAGE__) && $self->ipc_childsafe) {
 	exit($self->system(@_) | $self->ipc_childsafe->finish);
     } elsif (MSWIN && $self->execwait) {
-	exit $self->autoquote(1)->system(@_);
+	exit $self->system(@_);
     } else {
 	my $dbg = $self->dbglevel;
 	my @cmd = (@{$self->{AV_PROG}},
@@ -611,12 +624,13 @@ sub system {
     my @prog = @{$self->{AV_PROG}};
     my @opts = $self->_sets2opts(@_);
     my @args = @{$self->{AV_ARGS}};
-    my @cmd = (@prog, @opts, @args);
     my $childsafe = $self->ipc_childsafe;
-    # Must pass (@prog, @opts, @args) in order for quoting to stick.
-    @cmd = $self->quote(@prog, @opts, @args)
-	if (((MSWIN && @cmd>1) || ($childsafe && ref($self) ne __PACKAGE__)) &&
-	    $self->autoquote);
+    # This potentially modifies (@prog, @opts, @args) in place.
+    $self->quote(@prog, @opts, @args)
+	if (((MSWIN && (@prog + @opts + @args) > 1) ||
+			    ($childsafe && ref($self) ne __PACKAGE__)) &&
+			    $self->autoquote);
+    my @cmd = (@prog, @opts, @args);
     if ((ref($self) ne __PACKAGE__) && $childsafe) {
 	my %results = $self->_ipccmd(@cmd);
 	$? = $results{status} << 8;
@@ -634,6 +648,8 @@ sub system {
 	}
     } else {
 	my $dbg = $self->dbglevel;
+	# Reset to defaults in dbg mode
+	($ofd, $efd) = (1, 2) if $dbg > 2;
 	if ($self->noexec) {
 	    print STDERR "- @cmd\n";
 	    return 0;
@@ -674,17 +690,18 @@ sub system {
 sub qx {
     return __PACKAGE__->new(@_)->qx if !ref($_[0]) || ref($_[0]) eq 'HASH';
     my $self = shift;
-    my $childsafe = $self->ipc_childsafe;
     my @prog = @{$self->{AV_PROG}};
     my @opts = $self->_sets2opts(@_);
     my @args = @{$self->{AV_ARGS}};
+    my $childsafe = $self->ipc_childsafe;
     @args = $self->glob(@args)
 		if MSWIN && $self->autoglob && $childsafe;
+    # This potentially modifies (@prog, @opts, @args) in place.
+    $self->quote(@prog, @opts, @args)
+	if (((@prog + @opts + @args) > 1 ||
+			    ($childsafe && ref($self) ne __PACKAGE__)) &&
+			    $self->autoquote);
     my @cmd =(@prog, @opts, @args);
-    # Must pass (@prog, @opts, @args) in order for quoting to stick.
-    @cmd = $self->quote(@prog, @opts, @args)
-	if ((@cmd > 1 || ($childsafe && ref($self) ne __PACKAGE__)) &&
-	    $self->autoquote);
     my @data;
     my $dbg = 0;
     my($ofd, $efd) = ($self->stdout, $self->stderr);
@@ -710,6 +727,8 @@ sub qx {
 	}
     } else {
 	$dbg = $self->dbglevel;
+	# Reset to defaults in dbg mode
+	($ofd, $efd) = (1, 2) if $dbg > 2;
 	my $limit = $self->qxargs;
 	if ($limit && @args) {
 	    while (my @chunk = splice(@args, 0, $limit)) {
@@ -1186,10 +1205,10 @@ be called upon error. This provides a basic "exception-handling" system:
 
     $obj->autofail(sub { print "caught an exception\n"; exit 17 });
 
-Any failed executions by C<$obj> will call C<handler()>. If the
-reference provided is an array-ref instead, the first element of that
-array is assumed to be a code-ref and the rest of the array is passed
-as args to the function.
+Any failed executions by C<$obj> will call C<handler()>. Alternatively,
+if the reference provided is an array-ref, the first element of that
+array is assumed to be a code-ref as above and the rest of the array is
+passed as args to the function on failure.
 
 =item * syfail,qxfail
 
@@ -1305,12 +1324,26 @@ attrs.  The C<-/> prefix is chosen to prevent conflicts with "real"
 flags. Abbreviations are allowed as long as they're unique within the
 set of -/ flags.
 
+=back
+
 =head1 PORTING
 
 This module is known to work on Solaris 2.5-7 and Windows NT 4.0SP3-5,
 and with perl 5.004_04 and 5.005_03.  As these two platforms are quite
 different, there should be no I<major> portability issues, but please
 send bug reports or patches to the address below.
+
+=head1 BUGS
+
+Argv uses C<Getopt::Long::Configure()> to modify configurable
+parameters in order to do some advanced option parsing with
+C<Getopt::Long>.  Unfortunately, older versions of C<Getopt::Long>
+offer no way to set those parameters back the way they were; they can
+only be set to their default values. Therefore, when using
+C<Getopt::Long> 2.23 or above Argv will restore prior settings but with
+older versions it will reset them to their defaults instead.  This may
+lead to confusing behavior if the using code also calls
+C<Getopt::Long::Configure()>.
 
 =head1 AUTHOR
 
