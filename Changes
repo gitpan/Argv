@@ -207,3 +207,17 @@ Revision history for Perl extension Argv.
 
 1.10 Tue Jul 22 10:35:41 EDT 2003
 	- Fixed contact data.
+
+1.11 Wed Dec 31 12:37:08 EST 2003
+	- Allow negative arguments to ->qxargs() and ->syxargs()
+	  to specify a maximum command-line length. As a special
+	  case, a value of -1 means to look up and use ARG_MAX.
+	  Also, the default was changed to -1. Thus cmd lines are
+	  now limited by length according to the OS limit instead
+	  of an arbitrary number.
+	  This was suggested by, and a sample implementation was
+	  provided by, Alex Harper of Digital Motorworks.
+	- Bugfix: chunked qx() would continue past a failed chunk
+	  and lose $?. It still continues but now remembers $?.
+	- Feature: the ->argv() method now returns the entire
+	  command line when called with no arguments.

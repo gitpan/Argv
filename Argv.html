@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <title>Argv Module</title>
-<link rev="made" href="mailto:perladmin@cleartool.com" />
+<link rev="made" href="mailto:dsb@boyski.com" />
 </head>
 
 <body style="background-color: white">
@@ -406,9 +406,9 @@ the <strong>execwait</strong> attribute is set. This is actually implemented as
 <li><strong><a name="item_qx"><code>qx()</code></a></strong><br />
 </li>
 Same semantics as described in <em>perlfunc/``qx''</em> but has the capability
-to process only a set number of arguments at a time to avoid exceeding
-the shell's line-length limit. This value is settable with the
-<em>qxargs</em> method.
+to process only a set command line length at a time to avoid exceeding
+OS line-length limits. This value is settable with the <em>qxargs</em>
+method.
 <p>One difference from the builtin <em>perlfunc/``qx''</em> is that the builtin
 allows you to leave off the double quotes around the command string
 (though they are always there implicitly), whereas the <em>qv()</em>
@@ -441,7 +441,7 @@ attributes</em> in Tom Christiansen's <em>perltootc</em> tutorial.
 <p></p>
 <li><strong><a name="item_class_defaults">Class Defaults</a></strong><br />
 </li>
-Each attribute has a default which may be overridden with an
+Each attribute has a class default which may be overridden with an
 environment variable by prepending the class name, e.g. ARGV_QXARGS=256
 or ARGV_STDERR=0;
 <p></p>
@@ -588,27 +588,48 @@ without executing anything.
 <p></p>
 <li><strong><a name="item_qxargs">qxargs</a></strong><br />
 </li>
-You can set a maximum number of arguments to be processed at a time,
-allowing you to blithely invoke e.g. <a href="#item_qx"><code>$obj-&gt;qx</code></a> on a list of any size
-without fear of exceeding your shell's limits. A per-platform default
-is set; this method allows it to be changed. A value of 0 suppresses
-the behavior.
+Sets a maximum command line length for each execution, allowing you to
+blithely invoke <a href="#item_qx"><code>$obj-&gt;qx</code></a> on a list of any size without fear of
+exceeding OS or shell limits. <em>The attribute is set to a per-platform
+default</em>; this method allows it to be changed as described below.
+<p>A value of 0 turns off the feature; all arguments will be thrown onto
+one command line and if that's too big it will fail. A positive value
+specifies the maximum number of <strong>arguments</strong> to place on each command
+line.  As the number of args has only a tenuous relationship with the
+length of the command line, this usage is deprecated and retained only
+for historical reasons (but see below). A negative value sets the
+overall command line length in <strong>bytes</strong>, which is a more sensible way
+to handle it.  As a special case, a value of <code>-1</code> sets the limit to
+that reported by the system (<code>getconf ARG_MAX</code> on POSIX platforms,
+32767 on Windows).  The default is <code>-1</code>.  Examples:</p>
+<pre>
+    $obj-&gt;qxargs(0);            # no cmdline length limit
+    $obj-&gt;qxargs(-2048);        # limit cmdlines to 2048 bytes
+    $obj-&gt;qxargs(-1);           # limit cmdlines to ARG_MAX bytes
+    $obj-&gt;qxargs(256);          # limit cmdlines to 256 arguments</pre>
+<p>Notes: The actual cmdline length limit is somewhat less than ARG_MAX on
+POSIX systems for reasons too complex to explain here. Also, the
+byte-limiting feature is a little more costly in startup time as the
+POSIX module, which is fairly large, is required. If you're sensitive
+to startup time and unlikely to have huge cmdlines, the old-style
+argument limit may make sense.</p>
 <p></p>
 <li><strong><a name="item_syxargs">syxargs</a></strong><br />
 </li>
-Analogous to <em>qxargs</em> but applies to <a href="#item_system"><code>system()</code></a> and is turned off by
-default. The reason is that <a href="#item_qx"><code>qx()</code></a> is typically used to <em>read</em> data
-whereas <a href="#item_system"><code>system()</code></a> is more often used to make stateful changes.
-Consider that ``ls foo bar'' produces the same result if broken up into
-``ls foo'' and ``ls bar'' but the same cannot be said for ``mv foo bar''.
+Analogous to <em>qxargs</em> but applies to <a href="#item_system"><code>system()</code></a>. Unlike <em>qxargs</em>,
+this is turned off by default. The reason is that <a href="#item_qx"><code>qx()</code></a> is typically
+used to <em>read</em> data whereas <a href="#item_system"><code>system()</code></a> is more often used to make
+stateful changes.  Consider that ``ls foo bar'' produces the same result
+if broken up into ``ls foo'' and ``ls bar'' but the same cannot be said for
+``mv foo bar''.
 <p></p>
 <li><strong><a name="item_stdout">stdout</a></strong><br />
 </li>
 Setting this attribute to 0, e.g:
 <pre>
     $obj-&gt;stdout(0);</pre>
-<p>causes STDOUT to be closed during invocation of any of the <em>execution
-methods</em> <code>system, exec, and qx</code>, and restored when they finish. A
+<p>causes STDOUT to be closed during invocation of the <em>execution
+methods</em> <a href="#item_system"><code>system</code></a>, <a href="#item_qx"><code>qx</code></a>, and <a href="#item_exec"><code>exec</code></a> and restored when they finish. A
 fancy (and portable) way of saying <code>1&gt;/dev/null</code> without needing a
 shell. A value of 2 is the equivalent of <code>1&gt;&amp;2</code>.</p>
 <p></p>
@@ -697,7 +718,7 @@ don't know the answer, but choosing a consistent style is a good idea.</p>
 </p>
 <hr />
 <h1><a name="author">AUTHOR</a></h1>
-<p>David Boyce &lt;<a href="mailto:dsbperl@cleartool.com">dsbperl@cleartool.com</a>&gt;</p>
+<p>David Boyce &lt;dsbperl AT boyski.com&gt;</p>
 <p>
 </p>
 <hr />

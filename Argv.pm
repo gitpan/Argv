@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.10';
+$VERSION = '1.11';
 @ISA = qw(Exporter);
 
 use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
@@ -17,11 +17,11 @@ my $class = __PACKAGE__;
 # Adapted from perltootc (see): an "eponymous meta-object" implementing
 # "translucent attributes".
 # For each key in the hash below, a method is automatically generated.
-# Each of these sets the object attr if called as an instance method or
+# Each method sets the object attr if called as an instance method or
 # the class attr if called as a class method. They return the instance
 # attr if it's defined, the class attr otherwise. The method name is
 # lower-case; e.g. 'qxargs'. The default value of each attribute comes
-# from the hash value which may be overridden in the environment.
+# from the hash value set here, which may be overridden in the environment.
 use vars qw(%Argv);
 %Argv = (
     AUTOCHOMP	=> $ENV{ARGV_AUTOCHOMP} || 0,
@@ -37,7 +37,7 @@ use vars qw(%Argv);
     MUSTEXEC	=> $ENV{ARGV_MUSTEXEC} || 0,
     NOEXEC	=> $ENV{ARGV_NOEXEC} || 0,
     OUTPATHNORM	=> $ENV{ARGV_OUTPATHNORM} || 0,
-    QXARGS	=> $ENV{ARGV_QXARGS} || (MSWIN ? 16 : 128),
+    QXARGS	=> $ENV{ARGV_QXARGS} || -1,
     QXFAIL	=> $ENV{ARGV_QXFAIL} || 0,
     QUIET	=> defined($ENV{ARGV_QUIET})  ? $ENV{ARGV_QUIET}  : 0,
     STDIN	=> defined($ENV{ARGV_STDIN})  ? $ENV{ARGV_STDIN}  : 0,
@@ -49,8 +49,8 @@ use vars qw(%Argv);
 
 # Generates execution-attribute methods from the table above. Provided
 # as a class method itself to potentially allow a derived class to
-# generate more. Semantics of these methods are quite context-driven
-# and are explained in the PODs.
+# generate more of these. Semantics of these methods are quite
+# context-driven and are explained in the PODs.
 sub gen_exec_method {
     my $meta = shift;
     no strict 'refs'; # must evaluate $meta as a symbolic ref
@@ -136,7 +136,7 @@ $class->gen_exec_method;
 	    my $fd = $streams{$name};
 	    if ($fd == 0) {
 		warn "Error: illegal value '$nfd' for $name" if $nfd > 0;
-		push(@$r_cmd, "<" . (MSWIN ? 'NUL' : '/dev/null')) if $nfd < 0;
+		push(@$r_cmd, '<' . (MSWIN ? 'NUL' : '/dev/null')) if $nfd < 0;
 	    } elsif ($nfd == 0) {
 		push(@$r_cmd, "$fd>" . (MSWIN ? 'NUL' : '/dev/null'));
 	    } elsif ($nfd == (3-$fd)) {
@@ -344,15 +344,19 @@ sub attrs {
 # Replace the instance's prog(), opt(), and args() vectors all together.
 sub argv {
     my $self = shift;
-    $self->attrs(shift) if ref($_[0]) eq 'HASH';
-    $self->{AV_PROG} = [];
-    $self->{AV_OPTS}{''} = [];
-    $self->{AV_ARGS} = [];
-    $self->prog(shift) if @_;
-    $self->attrs(shift) if ref($_[0]) eq 'HASH';
-    $self->opts(@{shift @_}) if ref $_[0];
-    $self->args(@_) if @_;
-    return $self;
+    if (@_) {
+	$self->attrs(shift) if ref($_[0]) eq 'HASH';
+	$self->{AV_PROG} = [];
+	$self->{AV_OPTS}{''} = [];
+	$self->{AV_ARGS} = [];
+	$self->prog(shift) if @_;
+	$self->attrs(shift) if ref($_[0]) eq 'HASH';
+	$self->opts(@{shift @_}) if ref $_[0];
+	$self->args(@_) if @_;
+	return $self;
+    } else {
+	return ($self->prog, $self->opts, $self->args);
+    }
 }
 *cmd = \&argv;	# backward compatibility
 
@@ -672,6 +676,78 @@ sub _dbg {
     print $fh "$prefix @tmp\n";
 }
 
+# Attempt to derive the value of ARG_MAX (the maximum command-line
+# length) for the current platform. Windows isn't really POSIX and
+# in my tests POSIX::ARG_MAX() usually throws an exception.
+# Therefore, on Windows we catch the exception and set the value
+# to 32767. I don't know what the actual limit is but 32K seems to
+# work whereas 64K fails and I haven't tried to narrow that range
+# (actually a bit of subsequent testing showed 48000 to work and
+# 50000 to fail, but I still prefer to depend on a round number).
+# On other platforms, if ARG_MAX is missing we use _POSIX_ARG_MAX
+# (4096) # as the default (that being the smallest value of ARG_MAX
+# allowed by the POSIX standard).
+{
+    my($_argmax, $_pathmax);
+    sub _arg_max {
+	require Config;
+	if (!defined($_argmax)) {
+	    $_argmax = MSWIN ? 32767 : 4096;
+	    eval { require POSIX; $_argmax = POSIX::ARG_MAX(); };
+	    # The terminating NULL of argv.
+	    $_argmax -= $Config::Config{ptrsize};
+	}
+	return $_argmax;
+    }
+    sub _path_max {
+	if (!defined($_pathmax)) {
+	    $_pathmax = MSWIN ? 260 : 1024;
+	    eval { require POSIX; $_pathmax = POSIX::PATH_MAX(); };
+	}
+	return $_pathmax;
+    }
+}
+
+# Determine the size of the environment block for subtraction
+# from the calculated value of ARG_MAX. We allow for an equals
+# sign and terminating null in each EV, plus the pointer
+# within the environ array that references it.
+# Note: Windows limits do not appear to include the environment block.
+sub _env_size {
+    require Config;
+    my $envlen = 0;
+    my $ptrsize = $Config::Config{ptrsize};
+    for my $ev (keys %ENV) {
+	$envlen += length($ev) + length($ENV{$ev}) + 2 + $ptrsize;
+    }
+    # Need one more pointer's worth for the terminating NULL in 'environ'.
+    return $envlen + $ptrsize;
+}
+
+# In the case where the user wants to do qxargs-style chunking by
+# buffer length rather than argument count, we need to keep pushing
+# args onto said buffer till we run out of room.
+sub _chunk_by_length {
+    require Config;
+    my ($args, $max) = @_;
+    my @chunk = ();
+    my $chunklen = 0;
+    my $extra = $Config::Config{ptrsize} + 1;
+    while (@{$args}) {
+	# Reached max length?
+	if (($chunklen + length(${$args}[0]) + $extra) >= $max) {
+	    # Always send at least one chunk no matter what.
+	    push(@chunk, shift(@{$args})) unless @chunk;
+	    last;
+	} else {
+	    $chunklen += length(${$args}[0]) + $extra;
+	    push(@chunk, shift(@{$args}));
+	}
+    }
+    #printf STDERR "CHUNK: $chunklen (MAX=$max, LEFT=%d)\n", scalar(@{$args});
+    return @chunk;
+}  
+
 # Wrapper around Perl's exec().
 sub exec {
     $class->new(@_)->exec if !ref($_[0]) || ref($_[0]) eq 'HASH';
@@ -819,7 +895,16 @@ sub system {
 	}
 	my $limit = $self->syxargs;
 	if ($limit && @args) {
-	    while (my @chunk = splice(@args, 0, $limit)) {
+	    if ($limit == -1) {
+		$limit = -_arg_max();
+		$limit += _env_size() if !MSWIN;
+		# There's no shell used in list-form system() ...
+		$limit += _path_max();		# for @prog
+		$limit += length("@opts");
+	    }
+	    while (my @chunk = $limit > 0 ?
+		    splice(@args, 0, $limit) :
+		    _chunk_by_length(\@args, abs($limit))) {
 		$self->_addstats("@prog", scalar @chunk)
 						    if defined(%Argv::Summary);
 		@cmd = (@prog, @opts, @chunk);
@@ -868,6 +953,7 @@ sub qx {
     my @cmd = (@prog, @opts, @args);
     my @data;
     my $dbg = 0;
+    my $rc = 0;
     my($ifd, $ofd, $efd) = ($self->stdin, $self->stdout, $self->stderr);
     my $noexec = $self->noexec && !$self->_read_only;
     if ($childsafe) {
@@ -878,12 +964,15 @@ sub qx {
 	    $self->_dbg($dbg, '-', \*STDERR, @cmd);
 	} else {
 	    my %results = $self->_ipccmd(@cmd);
-	    $? = $results{status} << 8;
-	    if ($ofd == 1) {
+	    $? = $rc = $results{status} << 8;
+	    if ($ofd == 0) {
+		# ignore the results
+	    } elsif ($ofd == 1) {
 		push(@data, @{$results{stdout}});
+	    } elsif ($ofd == 2) {
+		print STDERR @{$results{stdout}};
 	    } else {
-		print STDERR @{$results{stdout}} if $ofd == 2;
-		warn "Warning: illegal value '$ofd' for stdout" if $ofd > 2;
+		warn "Warning: illegal value '$ofd' for stdout";
 	    }
 	    if ($efd == 1) {
 		push(@data, @{$results{stderr}});
@@ -898,7 +987,17 @@ sub qx {
 	($ofd, $efd) = (1, 2) if defined($dbg) && $dbg > 2;
 	my $limit = $self->qxargs;
 	if ($limit && @args) {
-	    while (my @chunk = splice(@args, 0, $limit)) {
+	    if ($limit == -1) {
+		$limit = -_arg_max();
+		$limit += _env_size() if !MSWIN;
+		$limit += _path_max();		# for the shell
+		$limit += length('-c');
+		$limit += _path_max();		# for @prog
+		$limit += length("@opts");
+	    }
+	    while (my @chunk = $limit > 0 ?
+		    splice(@args, 0, $limit) :
+		    _chunk_by_length(\@args, abs($limit))) {
 		$self->_addstats("@prog", scalar @chunk)
 						    if defined(%Argv::Summary);
 		@cmd = (@prog, @opts, @chunk);
@@ -914,6 +1013,7 @@ sub qx {
 		    } else {
 			push(@data, CORE::qx(@cmd));
 		    }
+		    $rc ||= $?;
 		}
 	    }
 	} else {
@@ -930,8 +1030,10 @@ sub qx {
 		} else {
 		    @data = CORE::qx(@cmd);
 		}
+		$rc ||= $?;
 	    }
 	}
+	$? = $rc if $rc && ! $?;
     }
     print STDERR "+ (\$? == $?)\n" if $dbg > 1;
     $self->fail($self->qxfail) if $?;
@@ -1399,9 +1501,9 @@ Option sets are handled as described in I<system> above.
 =item * qx()
 
 Same semantics as described in I<perlfunc/"qx"> but has the capability
-to process only a set number of arguments at a time to avoid exceeding
-the shell's line-length limit. This value is settable with the
-I<qxargs> method.
+to process only a set command line length at a time to avoid exceeding
+OS line-length limits. This value is settable with the I<qxargs>
+method.
 
 One difference from the builtin I<perlfunc/"qx"> is that the builtin
 allows you to leave off the double quotes around the command string
@@ -1441,7 +1543,7 @@ attributes> in Tom Christiansen's I<perltootc> tutorial.
 
 =item * Class Defaults
 
-Each attribute has a default which may be overridden with an
+Each attribute has a class default which may be overridden with an
 environment variable by prepending the class name, e.g. ARGV_QXARGS=256
 or ARGV_STDERR=0;
 
@@ -1601,19 +1703,42 @@ without executing anything.
 
 =item * qxargs
 
-You can set a maximum number of arguments to be processed at a time,
-allowing you to blithely invoke e.g. C<$obj-E<gt>qx> on a list of any size
-without fear of exceeding your shell's limits. A per-platform default
-is set; this method allows it to be changed. A value of 0 suppresses
-the behavior.
+Sets a maximum command line length for each execution, allowing you to
+blithely invoke C<$obj-E<gt>qx> on a list of any size without fear of
+exceeding OS or shell limits. I<The attribute is set to a per-platform
+default>; this method allows it to be changed as described below.
+
+A value of 0 turns off the feature; all arguments will be thrown onto
+one command line and if that's too big it will fail. A positive value
+specifies the maximum number of B<arguments> to place on each command
+line.  As the number of args has only a tenuous relationship with the
+length of the command line, this usage is deprecated and retained only
+for historical reasons (but see below). A negative value sets the
+overall command line length in B<bytes>, which is a more sensible way
+to handle it.  As a special case, a value of C<-1> sets the limit to
+that reported by the system (C<getconf ARG_MAX> on POSIX platforms,
+32767 on Windows).  The default is C<-1>.  Examples:
+
+    $obj->qxargs(0);		# no cmdline length limit
+    $obj->qxargs(-2048);	# limit cmdlines to 2048 bytes
+    $obj->qxargs(-1);		# limit cmdlines to ARG_MAX bytes
+    $obj->qxargs(256);		# limit cmdlines to 256 arguments
+
+Notes: The actual cmdline length limit is somewhat less than ARG_MAX on
+POSIX systems for reasons too complex to explain here. Also, the
+byte-limiting feature is a little more costly in startup time as the
+POSIX module, which is fairly large, is required. If you're sensitive
+to startup time and unlikely to have huge cmdlines, the old-style
+argument limit may make sense.
 
 =item * syxargs
 
-Analogous to I<qxargs> but applies to C<system()> and is turned off by
-default. The reason is that C<qx()> is typically used to I<read> data
-whereas C<system()> is more often used to make stateful changes.
-Consider that "ls foo bar" produces the same result if broken up into
-"ls foo" and "ls bar" but the same cannot be said for "mv foo bar".
+Analogous to I<qxargs> but applies to C<system()>. Unlike I<qxargs>,
+this is turned off by default. The reason is that C<qx()> is typically
+used to I<read> data whereas C<system()> is more often used to make
+stateful changes.  Consider that "ls foo bar" produces the same result
+if broken up into "ls foo" and "ls bar" but the same cannot be said for
+"mv foo bar".
 
 =item * stdout
 
@@ -1621,8 +1746,8 @@ Setting this attribute to 0, e.g:
 
     $obj->stdout(0);
 
-causes STDOUT to be closed during invocation of any of the I<execution
-methods> C<system, exec, and qx>, and restored when they finish. A
+causes STDOUT to be closed during invocation of the I<execution
+methods> C<system>, C<qx>, and C<exec> and restored when they finish. A
 fancy (and portable) way of saying C<1E<gt>/dev/null> without needing a
 shell. A value of 2 is the equivalent of C<1E<gt>&2>.
 
@@ -1718,7 +1843,7 @@ don't know the answer, but choosing a consistent style is a good idea.
 
 =head1 AUTHOR
 
-David Boyce <dsbperl@cleartool.com>
+David Boyce <dsbperl AT boyski.com>
 
 =head1 COPYRIGHT
 
