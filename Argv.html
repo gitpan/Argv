@@ -223,11 +223,18 @@ will be used to set <EM>execution attributes</EM> at construction time. I.e.:</P
 Returns or sets the name of the program (the <CODE>&quot;argv[0]&quot;</CODE>). This can be
 a list, e.g. <CODE>qw(rcs co)</CODE> or an array reference.
 <P></P>
-<LI><STRONG><A NAME="item_args"><CODE>args()</CODE></A></STRONG><BR>
+<LI><STRONG><A NAME="item_opts"><CODE>opts()</CODE></A></STRONG><BR>
 
 Returns or sets the list of operands (aka arguments). As above, it may
-be passed a list or an array reference. If called in a void context and
-without args, the effect is to set the list of operands to <CODE>()</CODE>.
+be passed a list or an array reference. This is simply the member of
+the class of opts<EM>NAME</EM>() methods (see below) whose &lt;NAME&gt; is null;
+it's part of the predefined <EM>anonymous option set</EM>.
+<P></P>
+<LI><STRONG><A NAME="item_args"><CODE>args()</CODE></A></STRONG><BR>
+
+Returns or sets the list of operands (aka arguments).  If called in a
+void context and without args, the effect is to set the list of
+operands to <CODE>()</CODE>.
 <P></P>
 <LI><STRONG><A NAME="item_optset">optset(&lt;list-of-set-names&gt;);</A></STRONG><BR>
 

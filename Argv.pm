@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '0.52';
+$VERSION = '0.53';
 @ISA = qw(Exporter);
 
 use constant MSWIN	=> $^O =~ /MSWin32|Windows_NT/i;
@@ -303,6 +303,7 @@ sub attrs {
 # Replace the instance's prog(), opt(), and args() vectors all together.
 sub argv {
     my $self = shift;
+    $self->attrs(shift) if ref($_[0]) eq 'HASH';
     $self->{AV_PROG} = [];
     $self->{AV_OPTS}{''} = [];
     $self->{AV_ARGS} = [];
@@ -469,6 +470,9 @@ sub quote {
 	next unless m%[^-=:_.\w\\/]% || tr%\n%%;
 	# Special case - leave things that look like redirections alone.
 	next if /^\d?(?:<{1,2})|(?:>{1,2})/;
+	# This is a hack to support MKS-built perl 5.004. Don't know
+	# if the problem is with MKS builds or 5.004 per se.
+	next if MSWIN && $] < 5.005;
 	# Now quote embedded quotes ...
 	$_ =~ s%(\\*)"%$1$1\\"%g;
 	# quote a trailing \ so it won't quote the quote (!) ...
@@ -991,11 +995,18 @@ Or (using the autoloading interface)
 Returns or sets the name of the program (the C<"argv[0]">). This can be
 a list, e.g. C<qw(rcs co)> or an array reference.
 
-=item * args()
+=item * opts()
 
 Returns or sets the list of operands (aka arguments). As above, it may
-be passed a list or an array reference. If called in a void context and
-without args, the effect is to set the list of operands to C<()>.
+be passed a list or an array reference. This is simply the member of
+the class of optsI<NAME>() methods (see below) whose <NAME> is null;
+it's part of the predefined I<anonymous option set>.
+
+=item * args()
+
+Returns or sets the list of operands (aka arguments).  If called in a
+void context and without args, the effect is to set the list of
+operands to C<()>.
 
 =item * optset(<list-of-set-names>);
 
