@@ -1,0 +1,7 @@
+Revision history for Perl extension Argv.
+
+0.01  Thu May 27 14:32:34 1999
+	- original version; created by h2xs 1.18
+
+0.25  Tue Nov  2 22:42:50 EST 1999
+	- first CPAN release. NKNTW

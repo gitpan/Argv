@@ -1,0 +1,72 @@
+This module is exhaustively documented inline in the standard POD
+format. Part of that is excerpted here as a brief summary:
+
+This module presents an OO approach to command lines, allowing you
+to instantiate an 'argv object' and run it, e.g.:
+
+    my $ls = Argv->new(qw(ls -l));
+    my $rc = $ls->system;	# or $ls->exec or $ls->qx
+
+Which raises the immediate question - what value does this mumbo-jumbo
+add over Perl's native support such as:
+
+    my $rc = system(qw(ls -l));
+
+The answer comes in a few parts:
+
+STRUCTURE
+
+First, by recognizing the underlying properties of an arg vector. Every
+argv begins with a program name which is followed by (potentially)
+options and operands. The object factors its raw argv into these three
+groups, and provides accessor methods which allow operations on each
+group independently.
+
+OPTION SETS
+
+Second, the module encapsulates and extends C<Getopt::Long> to allow
+parsing of the argv's options into different I<option sets>. This is
+useful in the case of wrapper programs which may, for instance, need to
+parse out one set of flags which direct the behavior of the wrapper
+itself, parse a different set and pass them to program X, then
+another for program Y, then exec program Z with the remainder.  Doing
+this kind of thing on a basic @ARGV using indexing and C<splice()> is
+do-able but leads to spaghetti-ish code and lots of off-by-one errors.
+
+EXTRA FEATURES
+
+The I<execution methods> C<system, exec, and qx> extend their Perl builtin
+analogues in a few ways.  These are described fully in the POD but
+generally are in the area of portability. For instance, they will
+automatically convert / pathnames to \ on Windows platforms before
+exec-ing them, correctly quote command lines that will be exposed to
+the Windows shell in cases where they wouldn't be exposed to the shell
+on a Unix platform, cause exec() to behave synchronously on Windows as
+it does on Unix,etc.
+
+Many users might be interested in this solely for these Unix/Windows
+portability aids, and may not care less about an OO approach to
+factoring argv's into option sets. For this reason the 'system' and
+'exec' methods are also made available as regular functions which
+(optionally) override the builtins. Thus you may find that adding
+
+    use Argv qw(system exec);
+
+to your script enhances its portability to Windows. This will (should)
+be a semantic no-op on Unix, by the way.
+
+A NOTE ON THE NAME
+
+I'm aware that single-level namespaces are generally deprecated, but
+there are many modern exceptions; see Memoize, Coy, and Interpolation
+among others. I tried hard to fit this into an existing namespace as
+well as soliciting ideas at modules@perl.org. But I couldn't find a
+natural place by myself and nobody was able to suggest one either.
+
+Considering the alternatives of putting it in a 'wrong' category just
+for the sake of having one, or creating a category for it to live in
+all alone, I decided this was a reasonable case for making an
+exception.  "Argv" is just the natural name for this module IMO. The
+CPAN policies don't say that single-level names are forbidden, simply
+that one should think long and hard before using one. I'm here to say
+that I did so.
