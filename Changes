@@ -119,3 +119,6 @@ Revision history for Perl extension Argv.
 	  for child processes.
 	- Cleaned up issues related to Getopt::Long::Configure and
 	  default settings.
+
+0.54 Thu Aug 10 11:54:14 EDT 2000
+	- Compatibility for old Data::Dumper builds without Dumpxs.

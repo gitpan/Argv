@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '0.53';
+$VERSION = '0.54';
 @ISA = qw(Exporter);
 
 use constant MSWIN	=> $^O =~ /MSWin32|Windows_NT/i;
@@ -246,9 +246,18 @@ sub new {
     my $attrs = shift if ref($_[0]) eq 'HASH';
     my($class, $self);
     if ($class = ref($proto)) {
-	# Make a (deep) clone of the original
+	# As an instance method, make a (deep) clone of the invoking object.
 	require Data::Dumper;
-	eval Data::Dumper->new([$proto], ['self'])->Deepcopy(1)->Dumpxs;
+	# Older Perl versions may not have the XS interface installed,
+	# so try it and fall back to the pure-perl version on failure.
+	my $copy = eval {
+	    Data::Dumper->Deepcopy(1)->new([$proto], ['self'])->Dumpxs;
+	};
+	if ($@) {
+	    $copy = Data::Dumper->Deepcopy(1)->new([$proto], ['self'])->Dump;
+	}
+	eval $copy;
+	die $@ if $@;
     } else {
 	$class = $proto;
 	$self = {};
