@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '0.55';
+$VERSION = '1.00';
 @ISA = qw(Exporter);
 
 use constant MSWIN	=> $^O =~ /MSWin32|Windows_NT/i;
@@ -12,13 +12,15 @@ use strict;
 use Carp;
 require Exporter;
 
+my $class = __PACKAGE__;
+
 # Adapted from perltootc (see): an "eponymous meta-object" implementing
 # "translucent attributes".
 # For each key in the hash below, a method is automatically generated.
 # Each of these sets the object attr if called as an instance method or
 # the class attr if called as a class method. They return the instance
 # attr if it's defined, the class attr otherwise. The method name is
-# lower-case; e.g. 'qxargs'. The default values of each attribute come
+# lower-case; e.g. 'qxargs'. The default value of each attribute comes
 # from the hash value but may be overridden in the environment as shown.
 use vars qw(%Argv);
 %Argv = (
@@ -34,6 +36,7 @@ use vars qw(%Argv);
     OUTPATHNORM	=> $ENV{ARGV_OUTPATHNORM} || 0,
     QXARGS	=> $ENV{ARGV_QXARGS} || (MSWIN ? 16 : 128),
     QXFAIL	=> $ENV{ARGV_QXFAIL} || 0,
+    QUIET	=> defined($ENV{ARGV_QUIET}) ? $ENV{ARGV_QUIET} : 0,
     STDOUT	=> defined($ENV{ARGV_STDOUT}) ? $ENV{ARGV_STDOUT} : 1,
     STDERR	=> defined($ENV{ARGV_STDERR}) ? $ENV{ARGV_STDERR} : 2,
     SYFAIL	=> $ENV{ARGV_SYFAIL} || 0,
@@ -52,7 +55,6 @@ sub gen_exec_method {
 	my $method = lc $attr;
 	*$method = sub {
 	    my $self = shift;
-	    my $class = __PACKAGE__;
 	    # In null context with no args, set boolean value 'on'.
 	    @_ = (1) if !@_ && !defined(wantarray);
 	    my $ret = 0;
@@ -88,7 +90,7 @@ sub gen_exec_method {
 		    }
 		    # If setting a class attribute, export it to the
 		    # env in case we fork a child also using Argv.
-		    my $ev = uc join('_', __PACKAGE__, $attr);
+		    my $ev = uc join('_', $class, $attr);
 		    $ENV{$ev} = $class->{$attr};
 		    return $self;
 		} else {
@@ -113,7 +115,7 @@ sub gen_exec_method {
     }
 }
 
-__PACKAGE__->gen_exec_method;
+$class->gen_exec_method;
 
 # Generate two methods for diverting stdout and stderr in qx().
 {
@@ -161,20 +163,21 @@ sub ipc_childsafe {
 	IPC::ChildSafe->VERSION(3.10);
 	$ipc_obj = IPC::ChildSafe->new(@_);
     }
+    no strict 'refs';
     if (ref $self) {
 	if (defined $ipc_state) {
 	    $self->{_IPC_CHILDSAFE} = $ipc_obj;
 	    return $self;
 	} else {
 	    return defined($self->{_IPC_CHILDSAFE}) ?
-			$self->{_IPC_CHILDSAFE} : __PACKAGE__->{_IPC_CHILDSAFE};
+			$self->{_IPC_CHILDSAFE} : $class->{_IPC_CHILDSAFE};
 	}
     } else {
 	if (defined $ipc_state) {
-	    __PACKAGE__->{_IPC_CHILDSAFE} = $ipc_obj;
+	    $class->{_IPC_CHILDSAFE} = $ipc_obj;
 	    return $self;
 	} else {
-	    return __PACKAGE__->{_IPC_CHILDSAFE};
+	    return $class->{_IPC_CHILDSAFE};
 	}
     }
 }
@@ -190,7 +193,6 @@ sub attropts {
 	$prefix = $cfg->{PREFIX};
     }
     require Getopt::Long;
-    my $oldgetopt = Getopt::Long->VERSION < 2.17;
     local $Getopt::Long::passthrough = 1;
     local $Getopt::Long::genprefix = "($prefix)";
     my @flags = map {"$_=i"} ((map lc, keys %Argv::Argv), @_);
@@ -198,24 +200,20 @@ sub attropts {
     if (ref $self) {
 	if ($r_argv) {
 	    local @ARGV = @$r_argv;
-	    @ARGV = map {s%^-/%--%; $_} @ARGV if $oldgetopt;
 	    GetOptions(\%opt, @flags);
 	    @$r_argv = @ARGV;
 	} else {
 	    local @ARGV = $self->args;
 	    if (@ARGV) {
-		@ARGV = map {s%^-/%--%; $_} @ARGV if $oldgetopt;
 		GetOptions(\%opt, @flags);
 		$self->args(@ARGV);
 	    }
 	}
     } elsif ($r_argv) {
 	local @ARGV = @$r_argv;
-	@ARGV = map {s%^-/%--%; $_} @ARGV if $oldgetopt;
 	GetOptions(\%opt, @flags);
 	@$r_argv = @ARGV;
     } elsif (@ARGV) {
-	@ARGV = map {s%^-/%--%; $_} @ARGV if $oldgetopt;
 	GetOptions(\%opt, @flags);
     }
     for my $method (keys %opt) { $self->$method($opt{$method}) }
@@ -227,7 +225,7 @@ sub attropts {
 # printable format. Called with a void context to start data-
 # collection, with a scalar context to end it and get the report.
 sub summary {
-    my $class = shift;
+    my $cls = shift;
     my($cmds, $operands);
     if (!defined wantarray) {
 	# This is a horrible hack ....
@@ -237,7 +235,7 @@ sub summary {
     }
     return unless %Argv::Summary;
     my $fmt = "%30s:  %4s\t%s\n";
-    my $str = sprintf $fmt, "$class SUMMARY", 'Cmds', 'Operands';
+    my $str = sprintf $fmt, "$cls SUMMARY", 'Cmds', 'Operands';
     for (keys %Argv::Summary) {
 	my @stats = @{$Argv::Summary{$_}};
 	$cmds += $stats[0];
@@ -253,26 +251,35 @@ sub summary {
 sub new {
     my $proto = shift;
     my $attrs = shift if ref($_[0]) eq 'HASH';
-    my($class, $self);
-    if ($class = ref($proto)) {
-	# As an instance method, make a (deep) clone of the invoking object.
-	require Data::Dumper;
-	# Older Perl versions may not have the XS interface installed,
-	# so try it and fall back to the pure-perl version on failure.
-	my $copy = eval {
-	    Data::Dumper->Deepcopy(1)->new([$proto], ['self'])->Dumpxs;
+    my $self;
+    if (ref($proto)) {
+	# As an instance method, make a deep clone of the invoking object.
+	# Some cloners are fast but not commonly installed, others the
+	# reverse. We try them in order of speed and fall back to
+	# Data::Dumper which is slow but core Perl as of 5.6.0. I could
+	# just inherit from Clone or Storable but want to not require
+	# users who don't need cloning to install them.
+	eval {
+	    require Storable;
+	    $self = Storable::dclone($proto);
 	};
 	if ($@) {
-	    $copy = Data::Dumper->Deepcopy(1)->new([$proto], ['self'])->Dump;
+	    require Data::Dumper;
+	    # Older Perl versions may not have the XS interface installed,
+	    # so try it and fall back to the pure-perl version on failure.
+	    my $copy = eval {
+		Data::Dumper->Deepcopy(1)->new([$proto], ['self'])->Dumpxs;
+	    };
+	    $copy = Data::Dumper->Deepcopy(1)->new([$proto], ['self'])->Dump
+									if $@;
+	    eval $copy;
 	}
-	eval $copy;
 	die $@ if $@;
     } else {
-	$class = $proto;
 	$self = {};
 	$self->{AV_PROG} = [];
 	$self->{AV_ARGS} = [];
-	bless $self, $class;
+	bless $self, $proto;
 	$self->optset('');
     }
     $self->attrs($attrs) if $attrs;
@@ -435,8 +442,9 @@ sub factor {
 	local @ARGV = @$r_args;
 	if ($r_desc && @$r_desc) {
 	    require Getopt::Long;
+	    # Need this version so Configure() returns prev state.
+	    Getopt::Long->VERSION(2.23);
 	    if ($r_cfg && @$r_cfg) {
-		Getopt::Long->VERSION(2.23); # Configure() returns prev state
 		my $prev = Getopt::Long::Configure(@$r_cfg);
 		GetOptions($self->{AV_LKG}{$pset}, @$r_desc);
 		Getopt::Long::Configure($prev);
@@ -558,6 +566,11 @@ sub _addstats {
     $Argv::Summary{$prg} = $stats;
 }
 
+# Handles ->autofail operations. If given a scalar, exit with the value
+# of that scalar on failure unless the scalar == 0, in which case
+# don't exit. If given a ref to a scalar, increment the scalar for
+# each failure. If given a code ref, call that subroutine. An array ref
+# is assumed to contain a code ref followed by parameters for the sub.
 sub fail {
     my($self, $specific) = @_;
     my $general = $self->autofail;
@@ -568,6 +581,8 @@ sub fail {
 	    my @arr = @$val;
 	    my $func = shift(@arr);
 	    &$func(@arr);
+	} elsif (ref($val) eq 'SCALAR') {
+	    $$val++;
 	} elsif ($val !~ /^\d*$/) {
 	    die $val;
 	} elsif ($val) {
@@ -577,12 +592,19 @@ sub fail {
     return $self;
 }
 
+# Hidden function for printing debug output.
+sub _dbg {
+    my($prefix, $fh, @txt) = @_;
+    $class->quote(@txt);
+    print $fh "$prefix @txt\n";
+}
+
 # Wrapper around Perl's exec().
 sub exec {
-    return __PACKAGE__->new(@_)->system if !ref($_[0]) || ref($_[0]) eq 'HASH';
+    return $class->new(@_)->system if !ref($_[0]) || ref($_[0]) eq 'HASH';
     my $self = shift;
-    if ((ref($self) ne __PACKAGE__) && $self->ipc_childsafe) {
-	exit($self->system(@_) | $self->ipc_childsafe->finish);
+    if ((ref($self) ne $class) && $self->ipc_childsafe) {
+	exit($self->system(@_) || $self->ipc_childsafe->finish);
     } elsif (MSWIN && $self->execwait) {
 	exit $self->system(@_);
     } else {
@@ -591,13 +613,15 @@ sub exec {
 			    $self->_sets2opts(@_), @{$self->{AV_ARGS}});
 	my($ofd, $efd) = ($self->stdout, $self->stderr);
 	if ($self->noexec) {
-	    print STDERR "- @cmd\n";
+	    _dbg('-', \*STDERR, @cmd);
 	} else {
-	    print STDERR "+ @cmd\n" if $dbg;
+	    _dbg('+', \*STDERR, @cmd) if $dbg;
 	    open(_O, '>&STDOUT');
 	    open(_E, '>&STDERR');
 	    if ($ofd == 2) {
 		open(STDOUT, '>&STDERR') || warn "Can't dup stdout";
+	    } elsif ($self->quiet) {
+		close(STDOUT);
 	    } elsif ($ofd != 1) {
 		close(STDOUT) if !$ofd;
 		warn "Warning: illegal value '$ofd' for stdout" if $ofd > 2;
@@ -640,7 +664,7 @@ sub _ipccmd {
 
 # Wrapper around Perl's system().
 sub system {
-    return __PACKAGE__->new(@_)->system if !ref($_[0]) || ref($_[0]) eq 'HASH';
+    return $class->new(@_)->system if !ref($_[0]) || ref($_[0]) eq 'HASH';
     my $self = shift;
     my $rc = 0;
     my($ofd, $efd) = ($self->stdout, $self->stderr);
@@ -652,13 +676,16 @@ sub system {
     # This potentially modifies (@prog, @opts, @args) in place.
     $self->quote(@prog, @opts, @args)
 	if (((MSWIN && (@prog + @opts + @args) > 1) ||
-			    ($childsafe && ref($self) ne __PACKAGE__)) &&
+			    ($childsafe && ref($self) ne $class)) &&
 			    $self->autoquote);
     my @cmd = (@prog, @opts, @args);
-    if ((ref($self) ne __PACKAGE__) && $childsafe) {
+    $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
+    if ((ref($self) ne $class) && $childsafe) {
 	my %results = $self->_ipccmd(@cmd);
-	$? = $results{status} << 8;
-	if ($ofd == 2) {
+	$? = $rc = $results{status} << 8;
+	if ($self->quiet) {
+	    # say nothing
+	} elsif ($ofd == 2) {
 	    print STDERR @{$results{stdout}} if @{$results{stdout}};
 	} else {
 	    warn "Warning: illegal value '$ofd' for stdout" if $ofd > 2;
@@ -675,14 +702,15 @@ sub system {
 	# Reset to defaults in dbg mode
 	($ofd, $efd) = (1, 2) if defined($dbg) && $dbg > 2;
 	if ($self->noexec) {
-	    print STDERR "- @cmd\n";
+	    _dbg('-', \*STDERR, @cmd);
 	    return 0;
 	}
-	print STDERR "+ @cmd\n" if $dbg;
 	open(_O, '>&STDOUT');
 	open(_E, '>&STDERR');
 	if ($ofd == 2) {
 	    open(STDOUT, '>&STDERR') || warn "Can't dup stdout";
+	} elsif ($self->quiet) {
+	    close(STDOUT);
 	} elsif ($ofd != 1) {
 	    close(STDOUT) if !$ofd;
 	    warn "Warning: illegal value '$ofd' for stdout" if $ofd > 2;
@@ -697,22 +725,23 @@ sub system {
 	if ($limit && @args) {
 	    while (my @chunk = splice(@args, 0, $limit)) {
 		@cmd = (@prog, @opts, @chunk);
+		_dbg('+', \*_E, @cmd) if $dbg;
 		$rc |= CORE::system @cmd;
 	    }
 	} else {
+	    _dbg('+', \*_E, @cmd) if $dbg;
 	    $rc = CORE::system @cmd;
 	}
 	open(STDOUT, '>&_O'); close(_O);
 	open(STDERR, '>&_E'); close(_E);
     }
-    $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
     $self->fail($self->syfail) if $?;
     return $rc;
 }
 
 # Wrapper around Perl's qx(), aka backquotes.
 sub qx {
-    return __PACKAGE__->new(@_)->qx if !ref($_[0]) || ref($_[0]) eq 'HASH';
+    return $class->new(@_)->qx if !ref($_[0]) || ref($_[0]) eq 'HASH';
     my $self = shift;
     my @prog = @{$self->{AV_PROG}};
     my @opts = $self->_sets2opts(@_);
@@ -723,16 +752,17 @@ sub qx {
     # This potentially modifies (@prog, @opts, @args) in place.
     $self->quote(@prog, @opts, @args)
 	if (((@prog + @opts + @args) > 1 ||
-			    ($childsafe && ref($self) ne __PACKAGE__)) &&
+			    ($childsafe && ref($self) ne $class)) &&
 			    $self->autoquote);
     my @cmd =(@prog, @opts, @args);
     my @data;
     my $dbg = 0;
     my($ofd, $efd) = ($self->stdout, $self->stderr);
     my $noexec = $self->noexec;
+    $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
     if ($childsafe) {
 	if ($noexec) {
-	    print STDERR "- @cmd\n";
+	    _dbg('-', \*STDERR, @cmd);
 	} else {
 	    my %results = $self->_ipccmd(@cmd);
 	    $? = $results{status} << 8;
@@ -758,9 +788,9 @@ sub qx {
 	    while (my @chunk = splice(@args, 0, $limit)) {
 		@cmd = (@prog, @opts, @chunk);
 		if ($noexec) {
-		    print STDERR "- @cmd\n";
+		    _dbg('-', \*STDERR, @cmd);
 		} else {
-		    print STDERR "+ @cmd\n" if $dbg;
+		    _dbg('+', \*STDERR, @cmd) if $dbg;
 		    $self->_qx_stderr(\@cmd, $efd);
 		    $self->_qx_stdout(\@cmd, $ofd);
 		    push(@data, CORE::qx(@cmd));
@@ -768,16 +798,15 @@ sub qx {
 	    }
 	} else {
 	    if ($noexec) {
-		print STDERR "- @cmd\n";
+		_dbg('-', \*STDERR, @cmd);
 	    } else {
-		print STDERR "+ @cmd\n" if $dbg;
+		_dbg('+', \*STDERR, @cmd) if $dbg;
 		$self->_qx_stderr(\@cmd, $efd);
 		$self->_qx_stdout(\@cmd, $ofd);
 		@data = CORE::qx(@cmd);
 	    }
 	}
     }
-    $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
     $self->fail($self->qxfail) if $?;
     if (MSWIN && $self->outpathnorm) {
 	for (@data) {
@@ -808,7 +837,7 @@ __END__
 
 =head1 NAME
 
-Argv - Provide an O-O interface to an ARGV
+Argv - Provide an OO interface to an arg vector
 
 =head1 SYNOPSIS
 
@@ -855,15 +884,15 @@ More advanced examples can be lifted from the test script or the
 
 =head1 RAISON D'ETRE
 
-This module presents an O-O approach to command lines, allowing you to
-instantiate an 'argv object', manipulate it, and eventually run it,
+Argv presents an OO approach to command lines, allowing you to
+instantiate an 'argv object', manipulate it, and eventually execute it,
 e.g.:
 
     my $ls = Argv->new('ls', ['-l']));
     my $rc = $ls->system;	# or $ls->exec or $ls->qx
 
 Which raises the immediate question - what value does this mumbo-jumbo
-add over Perl's native support, e.g.:
+add over Perl's native support such as:
 
     my $rc = system(qw(ls -l));
 
@@ -874,10 +903,11 @@ The answer comes in a few parts:
 =item * STRUCTURE
 
 First, Argv recognizes the underlying property of an arg vector, which
-is that it begins with a program name potentially followed by options,
-then operands. An Argv object factors a raw argv into these three
-groups, provides accessor methods to allow operations on each group
-independently, and can then put them back together for execution.
+is that it typically begins with a program name potentially followed by
+options, then operands. An Argv object factors a raw argv into these
+three groups, provides accessor methods to allow operations on each
+group independently, and can then put them back together for
+execution.
 
 
 =item * OPTION SETS
@@ -889,7 +919,7 @@ one set of flags to direct the behavior of the wrapper itself,
 extract a different set and pass them to program X, another for program
 Y, then exec program Z with the remainder.  Doing this kind of thing on
 a basic @ARGV using indexing and splicing is do-able but leads to
-spaghetti code and potential off-by-one errors.
+spaghetti-ish code.
 
 =item * EXTRA FEATURES
 
@@ -1241,6 +1271,12 @@ if the reference provided is an array-ref, the first element of that
 array is assumed to be a code-ref as above and the rest of the array is
 passed as args to the function on failure.
 
+If the reference is to a scalar, this scalar is incremented for each
+error as execution continues, e.g.
+
+    my $rc = 0;
+    $obj->autofail(\$rc);
+
 =item * syfail,qxfail
 
 Similar to C<autofail> but apply only to C<system()> or C<qx()>
@@ -1330,6 +1366,13 @@ As above, for STDERR. A value of 1 is the equivalent of C<2E<gt>&1>:
 
     @alloutput = $obj->stderr(1)->qx;
 
+=item * quiet
+
+This attribute causes STDOUT to be closed during invocation of the
+C<system> and C< exec> (but not C<qx>) I<execution methods>. It will
+cause the application to run more quietly. This takes precedence over
+a redirection of STDOUT using the <$obj-E<gt>stdout> method above.
+
 =back
 
 =over
@@ -1369,30 +1412,18 @@ for every instance of C<-/foo=1> found there.
 
 =head1 PORTING
 
-This module is known to work on Solaris 2.5-7 and Windows NT 4.0SP3-5,
-and with perl 5.004_04 and 5.005_03.  As these two platforms are quite
-different, there should be no I<major> portability issues, but please
-send bug reports or patches to the address below.
-
-=head1 BUGS
-
-Argv uses C<Getopt::Long::Configure()> to modify configurable
-parameters in order to do some advanced option parsing with
-C<Getopt::Long>.  Unfortunately, older versions of C<Getopt::Long>
-offer no way to set those parameters back the way they were; they can
-only be set to their default values. Therefore, when using
-C<Getopt::Long> 2.23 or above Argv will restore prior settings but with
-older versions it will reset them to their defaults instead.  This may
-lead to confusing behavior if the using code also calls
-C<Getopt::Long::Configure()>.
+This module is known to work on Solaris 2.5-8 and Windows 2000 SP2, and
+with perl 5.004_04 and 5.6.  As these platforms are quite different,
+there should be no I<major> portability issues, but please send bug
+reports or patches to the address below.
 
 =head1 AUTHOR
 
-David Boyce <dsb@world.std.com>
+David Boyce <dsb@boyski.com>
 
 =head1 COPYRIGHT
 
-Copyright (c) 1999,2000 David Boyce. All rights reserved.  This Perl
+Copyright (c) 1999-2001 David Boyce. All rights reserved.  This Perl
 program is free software; you may redistribute and/or modify it under
 the same terms as Perl itself.
 

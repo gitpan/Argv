@@ -4,9 +4,7 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     'NAME'		=> 'Argv',
     'VERSION_FROM'	=> 'Argv.pm',
-    # The code doesn't actually require Getopt::Long 2.17 but we
-    # prefer and thus request it here.
-    'PREREQ_PM'		=> { Getopt::Long => 2.17 },
+    'PREREQ_PM'		=> { Getopt::Long => 2.23 },
     'dist'		=> {
 	COMPRESS => 'gzip --force --best',
 	PREOP	 => "pod2html Argv.pm --title='Argv Module' >Argv.html",

@@ -27,7 +27,6 @@
 	</UL>
 
 	<LI><A HREF="#porting">PORTING</A></LI>
-	<LI><A HREF="#bugs">BUGS</A></LI>
 	<LI><A HREF="#author">AUTHOR</A></LI>
 	<LI><A HREF="#copyright">COPYRIGHT</A></LI>
 	<LI><A HREF="#see also">SEE ALSO</A></LI>
@@ -37,7 +36,7 @@
 <HR>
 <P>
 <H1><A NAME="name">NAME</A></H1>
-<P>Argv - Provide an O-O interface to an ARGV</P>
+<P>Argv - Provide an OO interface to an arg vector</P>
 <P>
 <HR>
 <H1><A NAME="synopsis">SYNOPSIS</A></H1>
@@ -84,14 +83,14 @@
 <P>
 <HR>
 <H1><A NAME="raison d'etre">RAISON D'ETRE</A></H1>
-<P>This module presents an O-O approach to command lines, allowing you to
-instantiate an 'argv object', manipulate it, and eventually run it,
+<P>Argv presents an OO approach to command lines, allowing you to
+instantiate an 'argv object', manipulate it, and eventually execute it,
 e.g.:</P>
 <PRE>
     my $ls = Argv-&gt;new('ls', ['-l']));
     my $rc = $ls-&gt;system;       # or $ls-&gt;exec or $ls-&gt;qx</PRE>
 <P>Which raises the immediate question - what value does this mumbo-jumbo
-add over Perl's native support, e.g.:</P>
+add over Perl's native support such as:</P>
 <PRE>
     my $rc = system(qw(ls -l));</PRE>
 <P>The answer comes in a few parts:</P>
@@ -99,10 +98,11 @@ add over Perl's native support, e.g.:</P>
 <LI><STRONG><A NAME="item_STRUCTURE">STRUCTURE</A></STRONG><BR>
 
 First, Argv recognizes the underlying property of an arg vector, which
-is that it begins with a program name potentially followed by options,
-then operands. An Argv object factors a raw argv into these three
-groups, provides accessor methods to allow operations on each group
-independently, and can then put them back together for execution.
+is that it typically begins with a program name potentially followed by
+options, then operands. An Argv object factors a raw argv into these
+three groups, provides accessor methods to allow operations on each
+group independently, and can then put them back together for
+execution.
 <P></P>
 <LI><STRONG><A NAME="item_OPTION_SETS">OPTION SETS</A></STRONG><BR>
 
@@ -113,7 +113,7 @@ one set of flags to direct the behavior of the wrapper itself,
 extract a different set and pass them to program X, another for program
 Y, then exec program Z with the remainder.  Doing this kind of thing on
 a basic @ARGV using indexing and splicing is do-able but leads to
-spaghetti code and potential off-by-one errors.
+spaghetti-ish code.
 <P></P>
 <LI><STRONG><A NAME="item_EXTRA_FEATURES">EXTRA FEATURES</A></STRONG><BR>
 
@@ -421,6 +421,11 @@ be called upon error. This provides a basic ``exception-handling'' system:</P>
 if the reference provided is an array-ref, the first element of that
 array is assumed to be a code-ref as above and the rest of the array is
 passed as args to the function on failure.</P>
+<P>If the reference is to a scalar, this scalar is incremented for each
+error as execution continues, e.g.</P>
+<PRE>
+    my $rc = 0;
+    $obj-&gt;autofail(\$rc);</PRE>
 <P></P>
 <LI><STRONG><A NAME="item_syfail%2Cqxfail">syfail,qxfail</A></STRONG><BR>
 
@@ -509,6 +514,13 @@ shell. A value of 2 is the equivalent of <CODE>1&gt;&amp;2</CODE>.</P>
 As above, for STDERR. A value of 1 is the equivalent of <CODE>2&gt;&amp;1</CODE>:
 <PRE>
     @alloutput = $obj-&gt;stderr(1)-&gt;qx;</PRE>
+<P></P>
+<LI><STRONG><A NAME="item_quiet">quiet</A></STRONG><BR>
+
+This attribute causes STDOUT to be closed during invocation of the
+<A HREF="#item_system"><CODE>system</CODE></A> and <CODE> exec</CODE> (but not <A HREF="#item_qx"><CODE>qx</CODE></A>) <EM>execution methods</EM>. It will
+cause the application to run more quietly. This takes precedence over
+a redirection of STDOUT using the &lt;$obj-&gt;stdout&gt; method above.
 <P></P></UL>
 <UL>
 <LI><STRONG><A NAME="item_attropts">attropts</A></STRONG><BR>
@@ -541,30 +553,18 @@ set of -/ flags. Whereas</P>
 <P>
 <HR>
 <H1><A NAME="porting">PORTING</A></H1>
-<P>This module is known to work on Solaris 2.5-7 and Windows NT 4.0SP3-5,
-and with perl 5.004_04 and 5.005_03.  As these two platforms are quite
-different, there should be no <EM>major</EM> portability issues, but please
-send bug reports or patches to the address below.</P>
-<P>
-<HR>
-<H1><A NAME="bugs">BUGS</A></H1>
-<P>Argv uses <CODE>Getopt::Long::Configure()</CODE> to modify configurable
-parameters in order to do some advanced option parsing with
-<CODE>Getopt::Long</CODE>.  Unfortunately, older versions of <CODE>Getopt::Long</CODE>
-offer no way to set those parameters back the way they were; they can
-only be set to their default values. Therefore, when using
-<CODE>Getopt::Long</CODE> 2.23 or above Argv will restore prior settings but with
-older versions it will reset them to their defaults instead.  This may
-lead to confusing behavior if the using code also calls
-<CODE>Getopt::Long::Configure()</CODE>.</P>
+<P>This module is known to work on Solaris 2.5-8 and Windows 2000 SP2, and
+with perl 5.004_04 and 5.6.  As these platforms are quite different,
+there should be no <EM>major</EM> portability issues, but please send bug
+reports or patches to the address below.</P>
 <P>
 <HR>
 <H1><A NAME="author">AUTHOR</A></H1>
-<P>David Boyce &lt;<A HREF="mailto:dsb@world.std.com">dsb@world.std.com</A>&gt;</P>
+<P>David Boyce &lt;<A HREF="mailto:dsb@boyski.com">dsb@boyski.com</A>&gt;</P>
 <P>
 <HR>
 <H1><A NAME="copyright">COPYRIGHT</A></H1>
-<P>Copyright (c) 1999,2000 David Boyce. All rights reserved.  This Perl
+<P>Copyright (c) 1999-2001 David Boyce. All rights reserved.  This Perl
 program is free software; you may redistribute and/or modify it under
 the same terms as Perl itself.</P>
 <P>

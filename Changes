@@ -127,3 +127,30 @@ Revision history for Perl extension Argv.
 	- Bugfix for case where ->exec returns on UNIX.
 	- Bugfix: previous versions silently removed '--' from @ARGV.
 	- POD work.
+
+----------------------------------------------------------------------------
+
+1.00 Thu May 10 00:10:24 EDT 2001
+	= Test Env: Solaris 8/Win2K SP2/Perl 5.6/CC 4.2
+	- Fixed a bug in the interaction with IPC::ChildSafe;
+	  the status from system() wasn't being correctly returned
+	  in coprocess mode.
+	- Added a ->quiet() attribute which suppresses stdout from
+	  system and exec (but not qx).
+	- Minor cosmetic fix: in verbose mode, quote whitespace
+	  so the resulting cmdline can be pasted back into a shell.
+	- Insist on a modern (>=2.23) Getopt::Long for simplicity.
+	- Bugfixes contributed by Silvio Wanka of alcatel.de.
+	- Try to use Clone or Storable modules for cloning if present;
+	  they're significantly faster. (Then removed Clone again
+	  for now, it's not ready for prime time).
+	- Minor new feature: the ->autofail exception-handling
+	  mechanism now allows a scalar-ref; the scalar will be
+	  incremented for each execution error.
+	- Improved verbosity (dbglevel=1) to show when cmd lines
+	  are split up for syxargs() reasons.
+	- Bugfix in ->summary class method.
+	- Recognizing that the API has reached maturity,
+	  I've moved the version to indicate a released state.
+	  I'll try hard to stay compatible with 1.00 in
+	  subsequent releases.

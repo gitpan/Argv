@@ -27,6 +27,10 @@ $pl->stdout(0);
 $pl->system;
 $final += printok($? == 0);
 
+print "+ Testing instance cloning ...\n";
+$pl->clone->system;
+$final += printok($? == 0);
+
 print "+ Testing construction using references ...\n";
 $final += printok(Argv->new($^X, [qw(-v)])->stdout(0)->system('') == 0);
 
@@ -78,6 +82,6 @@ $id2->optset(qw(REMOVED));
 my @removed = $id2->parseREMOVED(qw(r y x=s));
 local $, = ' ';
 print "Removed '@removed', left '@{[$id2->prog, $id2->opts, $id2->args]}'\n";
-print "NOTE: this last test sets the 'noexec' flag so no exec happens\n";
+print "NOTE: this test sets the 'noexec' class attribute so no exec happens\n";
 Argv->noexec(1);
 $id2->exec(qw(-));
