@@ -5,3 +5,14 @@ Revision history for Perl extension Argv.
 
 0.25  Tue Nov  2 22:42:50 EST 1999
 	- first CPAN release. NKNTW
+
+0.26  Tue Nov  9 19:36:17 EST 1999
+	- Fix Windows autoquoting for paths ending in \
+
+0.27  Thu Nov 11 09:37:06 EST 1999
+	- Fix Windows autoquoting again - turn embedded newlines back
+	into a literal "\n" so the &*@# cmd shell can turn it BACK.
+
+0.28  Thu Nov 11 22:09:44 EST 1999
+	- Bugfix: if ->qx has options but no args
+	- Removed unused ->script method.

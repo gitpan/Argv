@@ -10,7 +10,7 @@ use constant MSWIN	=> $^O =~ /win32/i;
 
 @EXPORT_OK = qw(system exec); # to support the "FUNCTIONAL INTERFACE"
 
-$VERSION = '0.25';
+$VERSION = '0.28';
 
 # Adapted from perltootc (see): an "eponymous meta-object" implementing
 # "translucent attributes".
@@ -26,16 +26,15 @@ use vars qw(%Argv);
 			    $ENV{ARGV_EXECWAIT} : 1,
       NATIVEPATH	=> $ENV{ARGV_NATIVEPATH} || scalar(MSWIN),
       NOEXEC		=> $ENV{ARGV_NOEXEC} || 0,
-      QXARGS		=> $ENV{ARGV_QXARGS} || 512,
-      SCRIPT		=> $ENV{ARGV_SCRIPT} || 0,
+      QXARGS		=> $ENV{ARGV_QXARGS} || (MSWIN ? 16 : 128),
       STDERR		=> defined($ENV{ARGV_STDERR}) ?
 			    $ENV{ARGV_STDERR} : 1,
       STDOUT		=> defined($ENV{ARGV_STDOUT}) ?
 			    $ENV{ARGV_STDOUT} : 1,
    );
 
-   # For each key in the eponymous hash, create a class method in the symtab.
-   # Each of these sets the object attr if called as an instance method,
+   # For each key in the eponymous hash, enter a method in the symtab.
+   # Each of these sets the object attr if called as an instance method or
    # the class attr if called as a class method. They return the instance
    # attr if it's defined, the class attr otherwise.
    my $meta = __PACKAGE__;
@@ -203,11 +202,14 @@ sub quote
       # Skip arg if already quoted ...
       next if substr($_, 0, 1) eq '"' && substr($_, -1, 1) eq '"';
       # ... or contains no special chars.
-      next unless m%[^-_.\w/\\]%;
+      next unless m%[^-_.\w/\\]% || tr%\n%%;
+      # Special case - turn any expanded newlines back into literal \n.
+      s%\n%\\n%g if MSWIN;
       # Special case - leave things that look like redirections alone.
       next if /^\d?(?:<{1,2})|(?:>{1,2})/;
       # Now quote embedded quotes, then the entire string.
       $_ =~ s%(\\*)"%$1$1\\"%g;
+      s%\\{1}$%\\\\%;	# quote trailing \ so it won't quote the "
       $_ = MSWIN ? qq("$_") : qq('$_');
    }
    if (defined wantarray) {
@@ -271,13 +273,10 @@ sub system
    $self->glob if MSWIN && $self->autoglob;
    my @cmd = (@{$self->{PROG}}, $self->_sets2opts(@_), @{$self->{ARGS}});
    @cmd = $self->quote(@cmd)
-	 if (MSWIN && @cmd > 1 && $self->autoquote) || $self->script;
+	 if (MSWIN && @cmd > 1 && $self->autoquote);
    my $rc = 0;
    if ($self->noexec) {
       print STDERR "+ @cmd\n";
-   } elsif ($self->script) {
-      local $, = ' ';
-      print @cmd, "\n";
    } else {
       $self->dbg("+ @cmd");
       if (!$self->stdout) {
@@ -311,9 +310,6 @@ sub exec
       my @cmd = (@{$self->{PROG}}, $self->_sets2opts(@_), @{$self->{ARGS}});
       if ($self->noexec) {
 	 print STDERR "+ @cmd\n";
-      } elsif ($self->script) {
-	 local $, = ' ';
-	 print 'exec', $self->quote(@cmd), "\n";
       } else {
 	 $self->dbg("+ @cmd");
 	 if (!$self->stdout) {
@@ -344,28 +340,38 @@ sub qx
    my @opts = $self->_sets2opts(@_);
    my @args = @{$self->{ARGS}};
    my(@results, @group) = ();
-   while (@group = splice(@args, 0, $self->qxargs || 100000000)) {
-      my @cmd = (@{$self->{PROG}}, @opts, @group);
-      @cmd = $self->quote(@cmd) if $self->autoquote || $self->script;
-      if ($self->noexec) {
-	 print STDERR "+ @cmd\n";
-      } elsif ($self->script) {
-	 local $, = ' ';
-	 print @group, "\n";
-      } else {
-	 $self->dbg("+ @cmd");
-	 if (!$self->stderr) {
-	    open(SAVE_STDERR, ">&STDERR");
-	    close(STDERR);
-	 }
-	 push(@results, CORE::qx(@cmd));
-	 if (defined(fileno(SAVE_STDERR))) {
-	    open(STDERR, ">&SAVE_STDERR");
-	    close(SAVE_STDERR);
-	 }
+   my $limit = $self->qxargs || 100000;
+   if (@args) {
+      while (@group = splice(@args, 0, $limit)) {
+	 push(@results, $self->_qx(@opts, @group));
       }
+   } else {
+      @results = $self->_qx(@opts, @group);
    }
    return wantarray ? @results : join('', @results);
+}
+
+sub _qx($@@) {
+   my $self = shift;
+   my(@opts, @group) = @_;
+   my @cmd = (@{$self->{PROG}}, @opts, @group);
+   @cmd = $self->quote(@cmd) if $self->autoquote;
+   my @results;
+   if ($self->noexec) {
+      print STDERR "+ @cmd\n";
+   } else {
+      $self->dbg("+ @cmd");
+      if (!$self->stderr) {
+	 open(SAVE_STDERR, ">&STDERR");
+	 close(STDERR);
+      }
+      push(@results, CORE::qx(@cmd));
+      if (defined(fileno(SAVE_STDERR))) {
+	 open(STDERR, ">&SAVE_STDERR");
+	 close(SAVE_STDERR);
+      }
+   }
+   return @results;
 }
 
 sub warning
@@ -794,6 +800,8 @@ needed for other platforms to the address below.
 =head1 AUTHOR
 
 David Boyce <dsb@world.std.com>
+
+=head1 COPYRIGHT
 
 Copyright (c) 1999 David Boyce. All rights reserved.  This perl program
 is free software; you may redistribute it and/or modify it under the
