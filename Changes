@@ -185,3 +185,7 @@ Revision history for Perl extension Argv.
 	- Minor cleanup work.
 	- bugfix in ->warning method
 	- bugfix in interface to IPC::ChildSafe
+
+1.06 Fri Dec 21 07:54:24 EST 2001
+	- bugfix to let subclasses interface with their own
+	  in-process implementations.

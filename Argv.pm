@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.05';
+$VERSION = '1.06';
 @ISA = qw(Exporter);
 
 use constant MSWIN	=> $^O =~ /MSWin32|Windows_NT/i;
@@ -34,6 +34,7 @@ use vars qw(%Argv);
     EXECWAIT	=> defined($ENV{ARGV_EXECWAIT}) ?
 					    $ENV{ARGV_EXECWAIT} : scalar(MSWIN),
     INPATHNORM	=> $ENV{ARGV_INPATHNORM} || 0,
+    MUSTEXEC	=> $ENV{ARGV_MUSTEXEC} || 0,
     NOEXEC	=> $ENV{ARGV_NOEXEC} || 0,
     OUTPATHNORM	=> $ENV{ARGV_OUTPATHNORM} || 0,
     QXARGS	=> $ENV{ARGV_QXARGS} || (MSWIN ? 16 : 128),
@@ -700,10 +701,10 @@ sub _ipccmd {
     # Hack - there's an "impedance mismatch" between instance
     # methods in this class and the class methods in
     # IPC::ChildSafe, so we toggle the attrs for every cmd.
-    my $childsafe = $self->ipc_childsafe;
-    $childsafe->dbglevel($self->dbglevel);
-    $childsafe->noexec($self->noexec);
-    my %results = $childsafe->cmd($cmd);
+    my $csobj = $self->ipc_childsafe;
+    $csobj->dbglevel($self->dbglevel);
+    $csobj->noexec($self->noexec);
+    my %results = $csobj->cmd($cmd);
     return %results;
 }
 
@@ -718,20 +719,20 @@ sub system {
     my @prog = @{$self->{AV_PROG}};
     my @opts = $self->_sets2opts(@_);
     my @args = @{$self->{AV_ARGS}};
-    my $childsafe = $self->ipc_childsafe;
+    my $childsafe = ((ref($self) ne $class) &&
+			    $self->ipc_childsafe && !$self->mustexec) ? 1 : 0;
     # This potentially modifies (@prog, @opts, @args) in place.
     $self->quote(@prog, @opts, @args)
-	if (((MSWIN && (@prog + @opts + @args) > 1) ||
-			    ($childsafe && ref($self) ne $class)) &&
-			    $self->autoquote);
+	if (((MSWIN && (@prog + @opts + @args) > 1) || $childsafe) &&
+						       $self->autoquote);
     my @cmd = (@prog, @opts, @args);
     my $dbg = $self->dbglevel;
-    if ((ref($self) ne $class) && $childsafe) {
+    if ($childsafe) {
 	$self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
 	$self->warning("cannot change \%ENV of child process") if $envp;
 	$self->warning("cannot close stdin of child process") if $ifd;
 	my %results = $self->_ipccmd(@cmd);
-	$? = $rc = $results{status} << 8;
+	$? = $rc = ($results{status} << 8);
 	if ($self->quiet) {
 	    # say nothing
 	} elsif ($ofd == 2) {
@@ -806,15 +807,14 @@ sub qx {
     my @prog = @{$self->{AV_PROG}};
     my @opts = $self->_sets2opts(@_);
     my @args = @{$self->{AV_ARGS}};
-    my $childsafe = $self->ipc_childsafe;
+    my $childsafe = ((ref($self) ne $class) &&
+			    $self->ipc_childsafe && !$self->mustexec) ? 1 : 0;
     @args = $self->glob(@args)
 		if MSWIN && $self->autoglob && $childsafe;
     # This potentially modifies (@prog, @opts, @args) in place.
     $self->quote(@prog, @opts, @args)
-	if (((@prog + @opts + @args) > 1 ||
-			    ($childsafe && ref($self) ne $class)) &&
-			    $self->autoquote);
-    my @cmd =(@prog, @opts, @args);
+	if (((@prog + @opts + @args) > 1 || $childsafe) && $self->autoquote);
+    my @cmd = (@prog, @opts, @args);
     my @data;
     my $dbg = 0;
     my($ifd, $ofd, $efd) = ($self->stdin, $self->stdout, $self->stderr);
@@ -1513,7 +1513,7 @@ David Boyce <dsb@boyski.com>
 
 =head1 COPYRIGHT
 
-Copyright (c) 1999-2001 David Boyce. All rights reserved.  This Perl
+Copyright (c) 1999-2002 David Boyce. All rights reserved.  This Perl
 program is free software; you may redistribute and/or modify it under
 the same terms as Perl itself.
 
