@@ -52,3 +52,18 @@ Revision history for Perl extension Argv.
 	- Added 'stdopts' method.
 	- Allow config data to be specified for methods calling
 	  Getopt::Long::GetOptions().
+
+0.40  Fri Dec 17 20:25:13 EST 1999
+	- Added 'autofail' method.
+	- Cleaned up PODs some.
+	- Reformatted to 4-space indenting.
+
+0.41 Wed Jan  5 12:31:18 EST 2000
+	- Renamed 'nativepath' to 'pathnorm'.
+	- Worked on 'stdopts' method.
+	- Removed overcomplicated 'dbglevel' stuff.
+
+0.42 Sun Jan  9 18:15:39 EST 2000
+	- POD work
+	- Fixed quoting bug.
+	- Defer errors to caller in ipc_childsafe call.

@@ -4,5 +4,11 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     'NAME'		=> 'Argv',
     'VERSION_FROM'	=> 'Argv.pm',
-    'dist'		=> { COMPRESS => 'gzip -f' },
+    'dist'		=> {
+	COMPRESS => 'gzip --force --best',
+	PREOP	 => "pod2html Argv.pm --title='Argv Module' >Argv.html",
+	POSTOP	 => 'rm -f pod2html-*cache',
+	TAR	 => 'gtar',
+	TARFLAGS => '--mode=u+w -cvf',
+    },
 );

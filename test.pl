@@ -47,9 +47,9 @@ $echo->system;
 $final += printok($? == 0);
 
 print "+ Testing 'dbglevel' instance-method form ...\n";
-Argv->dbglevel(2);
+Argv->dbglevel(1);
 my $ld = Argv->new($^X, qw(-bogus flag -V:ld));
-$ld->dbglevel(1);
+$ld->dbglevel(0);
 $ld->parse(qw(bogus=s));
 $ld->system('-');
 $final += printok($? == 0);
