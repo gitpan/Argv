@@ -195,3 +195,6 @@ Revision history for Perl extension Argv.
 	  semantic effect).
 	- Cosmetic improvement to dbglevel=1 verbosity quoting.
 	- Fixed ->exec return codes on Windows ($?<<=8).
+
+1.08 Tue Mar  5 14:37:51 EST 2002
+	- Added ->readonly attribute. Helpful with ->noexec (see).

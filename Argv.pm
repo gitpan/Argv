@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.07';
+$VERSION = '1.08';
 @ISA = qw(Exporter);
 
 use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
@@ -628,6 +628,31 @@ sub dump {
     return $self;
 }
 
+sub readonly {
+    my $self = shift;
+    no strict 'refs';
+    if (@_) {
+	$self->{AV_READONLY} = shift;
+	return $self;
+    } else {
+	if (exists($self->{AV_READONLY})) {
+	    return $self->{AV_READONLY};		# instance
+	} else {
+	    my $class = ref $self;
+	    if ($class && exists($class->{AV_READONLY})) {
+		return $class->{AV_READONLY};	# class
+	    } else {
+		return 'no';
+	    }
+	}
+    }
+}
+
+sub _read_only {
+    my $self = shift;
+    return $self->readonly =~ /^y/i;
+}
+
 # Hidden method for printing debug output.
 sub _dbg {
     my $self = shift;
@@ -651,7 +676,7 @@ sub exec {
 	my $dbg = $self->dbglevel;
 	my @cmd = (@{$self->{AV_PROG}},
 			    $self->_sets2opts(@_), @{$self->{AV_ARGS}});
-	if ($self->noexec) {
+	if ($self->noexec && !$self->_read_only) {
 	    $self->_dbg($dbg, '-', \*STDERR, @cmd);
 	} else {
 	    my($ifd, $ofd, $efd) = ($self->stdin, $self->stdout, $self->stderr);
@@ -711,7 +736,7 @@ sub _ipccmd {
     # IPC::ChildSafe, so we toggle the attrs for every cmd.
     my $csobj = $self->ipc_childsafe;
     $csobj->dbglevel($self->dbglevel);
-    $csobj->noexec($self->noexec);
+    $csobj->noexec($self->noexec) if $self->noexec && !$self->_read_only;
     my %results = $csobj->cmd($cmd);
     return %results;
 }
@@ -758,7 +783,7 @@ sub system {
     } else {
 	# Reset to defaults in dbg mode (what's this for?)
 	($ofd, $efd) = (1, 2) if defined($dbg) && $dbg > 2;
-	if ($self->noexec) {
+	if ($self->noexec && !$self->_read_only) {
 	    $self->_dbg($dbg, '-', \*STDERR, @cmd);
 	    return 0;
 	}
@@ -835,7 +860,7 @@ sub qx {
     my @data;
     my $dbg = 0;
     my($ifd, $ofd, $efd) = ($self->stdin, $self->stdout, $self->stderr);
-    my $noexec = $self->noexec;
+    my $noexec = $self->noexec && !$self->_read_only;
     if ($childsafe) {
 	$self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
 	$self->warning("cannot change \%ENV of child process") if $envp;
@@ -1218,6 +1243,32 @@ A no-op except for printing the state of the invoking instance to
 stderr. Potentially useful for debugging in situations where access to
 I<perl -d> is limited, e.g. across a socket connection or in a
 crontab. Invoked automatically at I<dbglevel=3>.
+
+=item * readonly
+
+Sets/gets the "readonly" attribute, which is a string indicating
+whether the instance is to be used for read operations only. If the
+attribute's value starts with C<y>, execution methods will be allowed
+to proceed even if the C<$obj-E<gt>noexec> attribute is set.
+
+The value of this is that it enables your script to have a C<-n> flag,
+a la C<make -n>, pretty easily by careful management of
+C<-E<gt>noexec>.  Consider a script which runs C<ls> to determine
+whether a file exists and then, conditionally, C<rm -f> to remove it.
+Causing a C<-n> flag from the user to set C<-E<gt>noexec> alone would
+break the program logic since the C<ls> would be skipped too. But, if
+you take care to use objects with the I<readonly> attribute set for all
+read-only operations, perhaps by defining a special read-only object:
+
+	my $ro = Argv->new;
+	$ro->readonly('yes');
+
+then a C<-n> flag will cause only write operations to be skipped.
+
+Note that, if you choose to use this feature at all, determining which
+operations are readonly is entirely the programmer's responsibility.
+There's no way for Argv to determine whether a child process will
+modify state.
 
 =back
 

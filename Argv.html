@@ -300,6 +300,29 @@ A no-op except for printing the state of the invoking instance to
 stderr. Potentially useful for debugging in situations where access to
 <EM>perl -d</EM> is limited, e.g. across a socket connection or in a
 crontab. Invoked automatically at <EM>dbglevel=3</EM>.
+<P></P>
+<LI><STRONG><A NAME="item_readonly">readonly</A></STRONG><BR>
+
+Sets/gets the ``readonly'' attribute, which is a string indicating
+whether the instance is to be used for read operations only. If the
+attribute's value starts with <CODE>y</CODE>, execution methods will be allowed
+to proceed even if the <A HREF="#item_noexec"><CODE>$obj-&gt;noexec</CODE></A> attribute is set.
+<P>The value of this is that it enables your script to have a <CODE>-n</CODE> flag,
+a la <CODE>make -n</CODE>, pretty easily by careful management of
+<A HREF="#item_noexec"><CODE>-&gt;noexec</CODE></A>.  Consider a script which runs <CODE>ls</CODE> to determine
+whether a file exists and then, conditionally, <CODE>rm -f</CODE> to remove it.
+Causing a <CODE>-n</CODE> flag from the user to set <A HREF="#item_noexec"><CODE>-&gt;noexec</CODE></A> alone would
+break the program logic since the <CODE>ls</CODE> would be skipped too. But, if
+you take care to use objects with the <EM>readonly</EM> attribute set for all
+read-only operations, perhaps by defining a special read-only object:</P>
+<PRE>
+        my $ro = Argv-&gt;new;
+        $ro-&gt;readonly('yes');</PRE>
+<P>then a <CODE>-n</CODE> flag will cause only write operations to be skipped.</P>
+<P>Note that, if you choose to use this feature at all, determining which
+operations are readonly is entirely the programmer's responsibility.
+There's no way for Argv to determine whether a child process will
+modify state.</P>
 <P></P></UL>
 <P>
 <H2><A NAME="execution methods">EXECUTION METHODS</A></H2>
