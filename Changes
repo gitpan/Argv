@@ -204,3 +204,6 @@ Revision history for Perl extension Argv.
 	  quotes on 'arg', escape "arg" to look like \"arg\", and
 	  allow a particular arg to opt out of autoquoting by
 	  prepending "^" as in ^arg.
+
+1.10 Tue Jul 22 10:35:41 EDT 2003
+	- Fixed contact data.

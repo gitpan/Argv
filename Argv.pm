@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.09';
+$VERSION = '1.10';
 @ISA = qw(Exporter);
 
 use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
@@ -950,6 +950,43 @@ sub qx {
 # Can't override qx() in main package so we export an alias instead.
 *qv = \&qx;
 
+# Wrapper around Perl's "open(FOO, '<cmd> |')" operator.
+sub readpipe {
+    return $class->new(@_)->readpipe if !ref($_[0]) || ref($_[0]) eq 'HASH';
+    my $self = shift;
+    my $envp = $self->envp;
+    my @prog = @{$self->{AV_PROG}};
+    my @opts = $self->_sets2opts(@_);
+    my @args = @{$self->{AV_ARGS}};
+    # This potentially modifies (@prog, @opts, @args) in place.
+    $self->quote(@prog, @opts, @args)
+	if (((@prog + @opts + @args) > 1) && $self->autoquote);
+    my @cmd = (@prog, @opts, @args);
+    my $dbg = 0;
+    my($ifd, $ofd, $efd) = ($self->stdin, $self->stdout, $self->stderr);
+    my $noexec = $self->noexec && !$self->_read_only;
+    $dbg = $self->dbglevel;
+    $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
+    if ($noexec) {
+	$self->_dbg($dbg, '-', \*STDERR, @cmd, '|');
+    } else {
+	my $handle;
+	$self->_dbg($dbg, '+', \*STDERR, @cmd, '|') if $dbg;
+	$self->_qx_stderr(\@cmd, $efd);
+	$self->_qx_stdout(\@cmd, $ofd);
+	my $rc;
+	if ($envp) {
+	    local %ENV = %$envp;
+	    $rc = open($handle, "@cmd |");
+	} else {
+	    $rc = open($handle, "@cmd |");
+	}
+	$self->fail($self->qxfail) if $rc || !defined($handle);
+	my $oldfh = select($handle); $| = 1; select($oldfh);
+	return $handle;
+    }
+}
+
 # Internal - provide a warning with std format and caller's context.
 sub warning {
     my $self = shift;
@@ -1019,7 +1056,7 @@ e.g.:
     my $rc = $ls->system;	# or $ls->exec or $ls->qx
 
 Which raises the immediate question - what value does this mumbo-jumbo
-add over Perl's native support such as:
+add over Perl's native way of doing the same thing:
 
     my $rc = system(qw(ls -l));
 
@@ -1031,9 +1068,9 @@ The answer comes in a few parts:
 
 First, Argv recognizes the underlying property of an arg vector, which
 is that it typically begins with a program name potentially followed by
-options, then operands. An Argv object factors a raw argv into these
+options and then operands. An Argv object factors a raw argv into these
 three groups, provides accessor methods to allow operations on each
-group independently, and can then put them back together for
+group independently, and can then paste them back together for
 execution.
 
 
@@ -1042,11 +1079,11 @@ execution.
 Second, Argv encapsulates and extends C<Getopt::Long> to allow parsing
 of the argv's options into different I<option sets>. This is useful in
 the case of wrapper programs which may, for instance, need to parse out
-one set of flags to direct the behavior of the wrapper itself,
-extract a different set and pass them to program X, another for program
-Y, then exec program Z with the remainder.  Doing this kind of thing on
-a basic @ARGV using indexing and splicing is do-able but leads to
-spaghetti-ish code.
+one set of flags to direct the behavior of the wrapper itself, extract
+a different set and pass them to program X, another for program Y, then
+exec program Z with the remainder.  Doing this kind of thing on a basic
+@ARGV using indexing and splicing is doable but leads to spaghetti-ish
+code.
 
 =item * EXTRA FEATURES
 
@@ -1059,20 +1096,20 @@ builtin analogues in a few ways, for example:
 
 =item 2. UNIX-like C<exec()> behavior on Windows.
 
-=item 3. Automatic quoting of C<system()> on Win32 and C<qx()> everywhere
+=item 3. Automatic quoting of C<system()> on Win32 and C<qx()> everywhere.
 
-=item 4. Automatic globbing (primarily for Windows)
+=item 4. Automatic globbing (primarily for Windows).
 
 =item 5. Automatic chomping.
 
-=item 6. Pathname normalization.
+=item 6. Pathname normalization (primarily for Windows).
 
 =back
 
 =back
 
-All of these behaviors can be toggled, either as class or instance
-attributes. See EXECUTION ATTRIBUTES below.
+All of these behaviors are optional and may be toggled either as class
+or instance attributes. See EXECUTION ATTRIBUTES below.
 
 =head1 DESCRIPTION
 
@@ -1080,7 +1117,7 @@ An Argv object treats a command line as 3 separate entities: the
 I<program>, the I<options>, and the I<args>. The I<options> may be
 futher subdivided into user-defined I<option sets> by use of the
 C<optset> method. When one of the I<execution methods> is called, the
-parts are reassmbled into a single list and passed to the underlying
+parts are reassembled into a single list and passed to the underlying
 Perl execution function.
 
 Compare this with the way Perl works natively, keeping the 0th element
@@ -1107,16 +1144,18 @@ will run the 'date' command. Internally this is translated into
 
 	$obj->argv('date')->exec;
 
+See the C<argv> method below.
+
 =head1 FUNCTIONAL INTERFACE
 
-Because the extensions to C<system/exec/qx> described here may be
-useful in writing portable programs, they're made available for export
-as traditional functions. Thus:
+Because the extensions to C<system/exec/qx> described above may be
+helpful in writing portable programs, the methods are also made
+available for export as traditional functions. Thus:
 
     use Argv qw(system exec qv);
 
-will override the Perl builtins. There's no way to override the
-operator C<qx()> so an alias C<qv()> is provided.
+will override the Perl builtins. There's no way (that I know of) to
+override the operator C<qx()> so an alias C<qv()> is provided.
 
 =head1 CONSTRUCTOR
 
@@ -1136,17 +1175,17 @@ Predigested options are placed in the default (anonymous) option set.
 
 The constructor can be used as a class or instance method. In the
 latter case the new object is a deep (full) clone of its progenitor.
-In fact 'clone' is aliased to 'new', allowing clones to be created
-via:
+In fact there's a C<clone> method which is an alias to C<new>, allowing
+clones to be created via:
 
 	my $copy = $orig->clone;
 
-The first argument to C<new()> or C<clone()> can be a hash-ref, which
+The first argument to C<new()> or C<clone()> may be a hash-ref, which
 will be used to set I<execution attributes> at construction time. I.e.:
 
     my $obj = Argv->new({autochomp => 1, stderr => 0}, @ARGV);
 
-you may choose to add the command line later:
+You may choose to create an object and add the command line later:
 
     my $obj = Argv->new;
     $obj->prog('cat');
@@ -1169,8 +1208,8 @@ Or (using the autoloading interface)
 
 =item * prog()
 
-Returns or sets the name of the program (the C<"argv[0]">). This can be
-a list, e.g. C<qw(rcs co)> or an array reference.
+Returns or sets the name of the program (the C<"argv[0]">). The
+argument may be a list, e.g. C<qw(rcs co)> or an array reference.
 
 =item * opts()
 
@@ -1184,6 +1223,19 @@ it's part of the predefined I<anonymous option set>.
 Returns or sets the list of operands (aka arguments).  If called in a
 void context and without args, the effect is to set the list of
 operands to C<()>.
+
+=item * argv()
+
+Allows you to set the prog, opts, and args in one method call. It takes
+the same arguments as the constructor (above); the only difference is
+it operates on a pre-existing object to replace its attributes. I.e.
+
+    my $obj = ClearCase::Argv->new;
+    $obj->argv('cmd', [qw(-opt1 -opt2)], qw(arg1 arg2));
+
+is equivalent to
+
+    my $obj = ClearCase::Argv->new('cmd', [qw(-opt1 -opt2)], qw(arg1 arg2));
 
 =item * optset(<list-of-set-names>);
 
@@ -1262,17 +1314,18 @@ to proceed even if the C<$obj-E<gt>noexec> attribute is set.
 
 The value of this is that it enables your script to have a C<-n> flag,
 a la C<make -n>, pretty easily by careful management of
-C<-E<gt>noexec>.  Consider a script which runs C<ls> to determine
-whether a file exists and then, conditionally, C<rm -f> to remove it.
-Causing a C<-n> flag from the user to set C<-E<gt>noexec> alone would
-break the program logic since the C<ls> would be skipped too. But, if
-you take care to use objects with the I<readonly> attribute set for all
-read-only operations, perhaps by defining a special read-only object:
+C<-E<gt>readonly> and C<-E<gt>noexec>.  Consider a script which runs
+C<ls> to determine whether a file exists and then, conditionally, uses
+C<rm -f> to remove it.  Causing a C<-n> flag from the user to set
+C<-E<gt>noexec> alone would break the program logic since the C<ls>
+would be skipped too. But, if you take care to use objects with the
+I<readonly> attribute set for all read-only operations, perhaps by
+defining a special read-only object:
 
 	my $ro = Argv->new;
 	$ro->readonly('yes');
 
-then a C<-n> flag will cause only write operations to be skipped.
+then the C<-n> flag will cause only write operations to be skipped.
 
 Note that, if you choose to use this feature at all, determining which
 operations are readonly is entirely the programmer's responsibility.
@@ -1350,7 +1403,19 @@ to process only a set number of arguments at a time to avoid exceeding
 the shell's line-length limit. This value is settable with the
 I<qxargs> method.
 
-Also, if I<autoquote> is set the arguments are quoted to protect them
+One difference from the builtin I<perlfunc/"qx"> is that the builtin
+allows you to leave off the double quotes around the command string
+(though they are always there implicitly), whereas the I<qv()>
+functional interface I<must use literal quotes>. For instance, using
+I<qx()> you can use either of:
+
+    my @results = qx(command string here);
+    my @results = qx("command string here");
+
+which are semantically identical, but with I<qv()> you must use the
+latter form.
+
+Also, if I<autoquote> is set the arguments are escaped to protect them
 against the platform-standard shell I<on all platforms>. 
 
 Option sets are handled as described in I<system> above.
@@ -1388,11 +1453,11 @@ returned. If no value is passed I<and there is a valid return
 context>, the current value is returned. In a void context with no
 parameter, the attribute value is set to 1.
 
-=item * Stickiness
+=item * Stickiness (deprecated)
 
 A subtlety: if an I<execution attribute> is set in a void context, that
 attribute is I<"sticky">, i.e. it retains its state until explicitly
-changed. But if I<a new value is provided> and the context is not void,
+changed. But I<if a new value is provided and the context is not void>,
 the new value is B<temporary>. It lasts until the next I<execution
 method> (C<system, exec, or qx>) invocation, after which the previous
 value is restored. This feature allows locutions like this:
@@ -1400,8 +1465,9 @@ value is restored. This feature allows locutions like this:
 	$obj->cmd('date')->stderr(1)->system;
 
 Assuming that the C<$obj> object already exists and has a set of
-attributes; we can override one of them at execution time.  More
-examples:
+attributes; we can override one of them at execution time. The next
+time C<$obj> is used, stderr will go back to wherever it was directed
+before. More examples:
 
 	$obj->stdout(1);          # set attribute, sticky
 	$obj->stdout;             # same as above
@@ -1409,7 +1475,15 @@ examples:
 	$obj2 = $obj->stdout(1);  # set to 1 (temporary), return $obj
 
 WARNING: this attribute-stacking has turned out to be a bad idea. Its
-use is now deprecated.
+use is now deprecated. There are other ways to get to the same place:
+you can maintain multiple objects, each of which has different but
+permanent attributes. Or you can make a temporary copy of the object
+and modify that, e.g.:
+
+    $obj->clone->stderr(1)->system;
+    $obj->clone({stderr=>1})->system;
+
+each of which will leave C<$obj> unaffected.
 
 =back
 
@@ -1425,22 +1499,27 @@ When set, the program will exit immediately if the C<system> or C<qx>
 methods detect a nonzero status. Unset by default.
 
 Autofail may also be given a code-ref, in which case that function will
-be called upon error. This provides a basic "exception-handling" system:
+be called upon error. This provides a basic exception-handling system:
 
-    $obj->autofail(sub { print "caught an exception\n"; exit 17 });
+    $obj->autofail(sub { print STDERR "caught an exception\n"; exit 17 });
 
-Any failed executions by C<$obj> will call C<handler()>. Alternatively,
-if the reference provided is an array-ref, the first element of that
-array is assumed to be a code-ref as above and the rest of the array is
-passed as args to the function on failure.
+Any failed executions by C<$obj> will result in the above message and
+an immediate exit with return code == 17. Alternatively, if the
+reference provided is an array-ref, the first element of that array is
+assumed to be a code-ref as above and the rest of the array is passed
+as args to the function on failure. Thus:
+
+    $obj->autofail([&handler, $arg1, $arg2]);
+
+Will call C<handler($arg1, $arg2)> on error.
 
 If the reference is to a scalar, the scalar is incremented for each
-error and execution continues, e.g.
+error and execution continues. Switching to a class method example:
 
     my $rc = 0;
-    $obj->autofail(\$rc);
-    ...
-    print "There were $rc failures counted\n";
+    Argv->autofail(\$rc);
+    [do stuff involving Argv objects]
+    print "There were $rc failures counted by Argv\n";
     exit($rc);
 
 =item * envp
@@ -1455,7 +1534,7 @@ not affect the environment of the current process.  Takes a hashref:
     $obj->envp(\%newenv);
 
 Subsequent invocations of I<$obj> will add I</usr/ucb> to PATH and
-subtract TERM, LANG, and LD_LIBRARY_PATH;
+subtract TERM, LANG, and LD_LIBRARY_PATH.
 
 =item * syfail,qxfail
 
@@ -1599,16 +1678,47 @@ for every instance of C<-/foo=1> found there.
 
 =head1 PORTING
 
-This module is known to work on Solaris 2.5-8 and Windows 2000 SP2, and
-with perl 5.004_04 and 5.6.  As these platforms are quite different,
-there should be no I<major> portability issues, but please send bug
-reports or patches to the address below. Recent testing is with
-newer (5.6+) versions of Perl so some backporting may be necessary
-for older Perls.
+This module is known to work on Solaris 2.5.1-8 and Windows NT4 and
+2000, using perl 5.004_04 and 5.6.1.  As these platforms are quite
+different, there should be no I<major> problems using it on other
+platforms or perl versions 5.004+, but please send bug reports or
+patches to the address below. Recent testing is with newer (5.6.1+)
+versions of Perl so some backporting may be necessary for older Perls.
+
+Users of ActiveState Perl on Win32 should use build 631 or above as it
+corrects some significant quoting problems, and Argv has been modified
+to assume those fixes.
+
+=head1 PERFORMANCE
+
+If you make frequent use of the C<clone> method, you might consider
+installing the I<Clone> module by Ray Finch. This tends to speed up
+instance cloning a good bit.
+
+=head1 BUGS
+
+It's not exactly a bug but ... this module served as my laboratory for
+learning about Perl OO, autoloading, and various other advanced Perl
+topics. Therefore it was not written in a disciplined manner; rather, I
+stuck in every neat idea I was playing with at the time. As a result,
+though it works well as far as I know, there's a hopeless array of ways
+to do everything. I know the motto of Perl is TMTOWTDI but Argv goes
+one further: TWTMWTDE (There's Way Too Many Ways To Do Everything).
+
+For instance, to run commands with different values for execution
+attributes such as C<autoquote> or C<stderr>, you can keep multiple
+instances around with different attribute sets, or you can keep one
+I<template> instance which you clone-and-modify before each execution,
+letting the clone go out of scope in the next line:
+
+    $obj->clone->stderr(0)->system;
+
+Or do you toggle the class attributes while using vanilla instances?  I
+don't know the answer, but choosing a consistent style is a good idea.
 
 =head1 AUTHOR
 
-David Boyce <dsb@boyski.com>
+David Boyce <dsbperl@cleartool.com>
 
 =head1 COPYRIGHT
 

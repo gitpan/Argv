@@ -1,61 +1,66 @@
-<HTML>
-<HEAD>
-<TITLE>Argv Module</TITLE>
-<LINK REV="made" HREF="mailto:dsb@ultra10.boyski.com">
-</HEAD>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>Argv Module</title>
+<link rev="made" href="mailto:perladmin@cleartool.com" />
+</head>
 
-<BODY>
+<body style="background-color: white">
 
-<A NAME="__index__"></A>
+<p><a name="__index__"></a></p>
 <!-- INDEX BEGIN -->
 
-<UL>
+<ul>
 
-	<LI><A HREF="#name">NAME</A></LI>
-	<LI><A HREF="#synopsis">SYNOPSIS</A></LI>
-	<LI><A HREF="#raison d'etre">RAISON D'ETRE</A></LI>
-	<LI><A HREF="#description">DESCRIPTION</A></LI>
-	<LI><A HREF="#autoloading">AUTOLOADING</A></LI>
-	<LI><A HREF="#functional interface">FUNCTIONAL INTERFACE</A></LI>
-	<LI><A HREF="#constructor">CONSTRUCTOR</A></LI>
-	<LI><A HREF="#methods">METHODS</A></LI>
-	<UL>
+	<li><a href="#name">NAME</a></li>
+	<li><a href="#synopsis">SYNOPSIS</a></li>
+	<li><a href="#raison_d'etre">RAISON D'ETRE</a></li>
+	<li><a href="#description">DESCRIPTION</a></li>
+	<li><a href="#autoloading">AUTOLOADING</a></li>
+	<li><a href="#functional_interface">FUNCTIONAL INTERFACE</a></li>
+	<li><a href="#constructor">CONSTRUCTOR</a></li>
+	<li><a href="#methods">METHODS</a></li>
+	<ul>
 
-		<LI><A HREF="#instance methods">INSTANCE METHODS</A></LI>
-		<LI><A HREF="#execution methods">EXECUTION METHODS</A></LI>
-		<LI><A HREF="#execution attributes">EXECUTION ATTRIBUTES</A></LI>
-	</UL>
+		<li><a href="#instance_methods">INSTANCE METHODS</a></li>
+		<li><a href="#execution_methods">EXECUTION METHODS</a></li>
+		<li><a href="#execution_attributes">EXECUTION ATTRIBUTES</a></li>
+	</ul>
 
-	<LI><A HREF="#porting">PORTING</A></LI>
-	<LI><A HREF="#author">AUTHOR</A></LI>
-	<LI><A HREF="#copyright">COPYRIGHT</A></LI>
-	<LI><A HREF="#see also">SEE ALSO</A></LI>
-</UL>
+	<li><a href="#porting">PORTING</a></li>
+	<li><a href="#performance">PERFORMANCE</a></li>
+	<li><a href="#bugs">BUGS</a></li>
+	<li><a href="#author">AUTHOR</a></li>
+	<li><a href="#copyright">COPYRIGHT</a></li>
+	<li><a href="#see_also">SEE ALSO</a></li>
+</ul>
 <!-- INDEX END -->
 
-<HR>
-<P>
-<H1><A NAME="name">NAME</A></H1>
-<P>Argv - Provide an OO interface to an arg vector</P>
-<P>
-<HR>
-<H1><A NAME="synopsis">SYNOPSIS</A></H1>
-<PRE>
-    use Argv;</PRE>
-<PRE>
+<hr />
+<p>
+</p>
+<h1><a name="name">NAME</a></h1>
+<p>Argv - Provide an OO interface to an arg vector</p>
+<p>
+</p>
+<hr />
+<h1><a name="synopsis">SYNOPSIS</a></h1>
+<pre>
+    use Argv;</pre>
+<pre>
     # A roundabout way of getting perl's version.
     my $pl = Argv-&gt;new(qw(perl -v));
-    $pl-&gt;exec;</PRE>
-<PRE>
+    $pl-&gt;exec;</pre>
+<pre>
     # Run /bin/cat, showing how to provide &quot;predigested&quot; options.
-    Argv-&gt;new('/bin/cat', [qw(-u -n)], @ARGV)-&gt;system;</PRE>
-<PRE>
+    Argv-&gt;new('/bin/cat', [qw(-u -n)], @ARGV)-&gt;system;</pre>
+<pre>
     # A roundabout way of globbing.
     my $echo = Argv-&gt;new(qw(echo M*));
     $echo-&gt;glob;
     my $globbed = $echo-&gt;qx;
-    print &quot;'echo M*' globs to: $globbed&quot;;</PRE>
-<PRE>
+    print &quot;'echo M*' globs to: $globbed&quot;;</pre>
+<pre>
     # A demonstration of the builtin xargs-like behavior.
     my @files = split(/\s+/, $globbed);
     my $ls = Argv-&gt;new(qw(ls -d -l), @files);
@@ -64,8 +69,8 @@
     $ls-&gt;qxargs(1);
     my @long = $ls-&gt;qx;
     $ls-&gt;dbglevel(0);
-    print @long;</PRE>
-<PRE>
+    print @long;</pre>
+<pre>
     # A demonstration of how to use option sets in a wrapper program.
     @ARGV = qw(Who -a -y foo -r);       # hack up an @ARGV
     my $who = Argv-&gt;new(@ARGV);         # instantiate
@@ -77,556 +82,635 @@
     warn &quot;got -y flag in option set FOO\n&quot; if $who-&gt;flagFOO('y');
     print Argv-&gt;new('uname', $who-&gt;optsUNAME)-&gt;qx;
     $who-&gt;prog(lc $who-&gt;prog);          # force $0 to lower case
-    $who-&gt;exec(qw(WHO));                # exec the who cmd</PRE>
-<P>More advanced examples can be lifted from the test script or the
-./examples subdirectory.</P>
-<P>
-<HR>
-<H1><A NAME="raison d'etre">RAISON D'ETRE</A></H1>
-<P>Argv presents an OO approach to command lines, allowing you to
+    $who-&gt;exec(qw(WHO));                # exec the who cmd</pre>
+<p>More advanced examples can be lifted from the test script or the
+./examples subdirectory.</p>
+<p>
+</p>
+<hr />
+<h1><a name="raison_d'etre">RAISON D'ETRE</a></h1>
+<p>Argv presents an OO approach to command lines, allowing you to
 instantiate an 'argv object', manipulate it, and eventually execute it,
-e.g.:</P>
-<PRE>
+e.g.:</p>
+<pre>
     my $ls = Argv-&gt;new('ls', ['-l']));
-    my $rc = $ls-&gt;system;       # or $ls-&gt;exec or $ls-&gt;qx</PRE>
-<P>Which raises the immediate question - what value does this mumbo-jumbo
-add over Perl's native support such as:</P>
-<PRE>
-    my $rc = system(qw(ls -l));</PRE>
-<P>The answer comes in a few parts:</P>
-<UL>
-<LI><STRONG><A NAME="item_STRUCTURE">STRUCTURE</A></STRONG><BR>
-
+    my $rc = $ls-&gt;system;       # or $ls-&gt;exec or $ls-&gt;qx</pre>
+<p>Which raises the immediate question - what value does this mumbo-jumbo
+add over Perl's native way of doing the same thing:</p>
+<pre>
+    my $rc = system(qw(ls -l));</pre>
+<p>The answer comes in a few parts:</p>
+<ul>
+<li><strong><a name="item_structure">STRUCTURE</a></strong><br />
+</li>
 First, Argv recognizes the underlying property of an arg vector, which
 is that it typically begins with a program name potentially followed by
-options, then operands. An Argv object factors a raw argv into these
+options and then operands. An Argv object factors a raw argv into these
 three groups, provides accessor methods to allow operations on each
-group independently, and can then put them back together for
+group independently, and can then paste them back together for
 execution.
-<P></P>
-<LI><STRONG><A NAME="item_OPTION_SETS">OPTION SETS</A></STRONG><BR>
-
-Second, Argv encapsulates and extends <CODE>Getopt::Long</CODE> to allow parsing
-of the argv's options into different <EM>option sets</EM>. This is useful in
+<p></p>
+<li><strong><a name="item_option_sets">OPTION SETS</a></strong><br />
+</li>
+Second, Argv encapsulates and extends <code>Getopt::Long</code> to allow parsing
+of the argv's options into different <em>option sets</em>. This is useful in
 the case of wrapper programs which may, for instance, need to parse out
-one set of flags to direct the behavior of the wrapper itself,
-extract a different set and pass them to program X, another for program
-Y, then exec program Z with the remainder.  Doing this kind of thing on
-a basic @ARGV using indexing and splicing is do-able but leads to
-spaghetti-ish code.
-<P></P>
-<LI><STRONG><A NAME="item_EXTRA_FEATURES">EXTRA FEATURES</A></STRONG><BR>
-
-The <EM>execution methods</EM> <CODE>system, exec, and qx</CODE> extend their Perl
+one set of flags to direct the behavior of the wrapper itself, extract
+a different set and pass them to program X, another for program Y, then
+exec program Z with the remainder.  Doing this kind of thing on a basic
+@ARGV using indexing and splicing is doable but leads to spaghetti-ish
+code.
+<p></p>
+<li><strong><a name="item_extra_features">EXTRA FEATURES</a></strong><br />
+</li>
+The <em>execution methods</em> <code>system, exec, and qx</code> extend their Perl
 builtin analogues in a few ways, for example:
-<OL>
-<LI><STRONG><A NAME="item_An_xargs%2Dlike_capability_without_shell_intervent">An xargs-like capability without shell intervention.</A></STRONG><BR>
-
-<LI><STRONG><A NAME="item_exec">UNIX-like <CODE>exec()</CODE> behavior on Windows.</A></STRONG><BR>
-
-<LI><STRONG><A NAME="item_system">Automatic quoting of <CODE>system()</CODE> on Win32 and <A HREF="#item_qx"><CODE>qx()</CODE></A> everywhere</A></STRONG><BR>
-
-<LI><STRONG><A NAME="item_globbing">Automatic globbing (primarily for Windows)</A></STRONG><BR>
-
-<LI><STRONG><A NAME="item_Automatic_chomping%2E">Automatic chomping.</A></STRONG><BR>
-
-<LI><STRONG><A NAME="item_Pathname_normalization%2E">Pathname normalization.</A></STRONG><BR>
-
-</OL>
-</UL>
-<P>All of these behaviors can be toggled, either as class or instance
-attributes. See EXECUTION ATTRIBUTES below.</P>
-<P>
-<HR>
-<H1><A NAME="description">DESCRIPTION</A></H1>
-<P>An Argv object treats a command line as 3 separate entities: the
-<EM>program</EM>, the <EM>options</EM>, and the <EM>args</EM>. The <EM>options</EM> may be
-futher subdivided into user-defined <EM>option sets</EM> by use of the
-<A HREF="#item_optset"><CODE>optset</CODE></A> method. When one of the <EM>execution methods</EM> is called, the
-parts are reassmbled into a single list and passed to the underlying
-Perl execution function.</P>
-<P>Compare this with the way Perl works natively, keeping the 0th element
-of the argv in <CODE>$0</CODE> and the rest in <CODE>@ARGV</CODE>.</P>
-<P>By default there's one option set, known as the <EM>anonymous option
-set</EM>, whose name is the null string. All parsed options go there.  The
+<ol>
+<li><strong><a name="item_an_xargs%2dlike_capability_without_shell_intervent">An xargs-like capability without shell intervention.</a></strong><br />
+</li>
+<li><strong><a name="item_exec">UNIX-like <code>exec()</code> behavior on Windows.</a></strong><br />
+</li>
+<li><strong><a name="item_system">Automatic quoting of <code>system()</code> on Win32 and <a href="#item_qx"><code>qx()</code></a> everywhere.</a></strong><br />
+</li>
+<li><strong><a name="item_globbing">Automatic globbing (primarily for Windows).</a></strong><br />
+</li>
+<li><strong><a name="item_automatic_chomping%2e">Automatic chomping.</a></strong><br />
+</li>
+<li><strong><a name="item_normalization">Pathname normalization (primarily for Windows).</a></strong><br />
+</li>
+</ol>
+</ul>
+<p>All of these behaviors are optional and may be toggled either as class
+or instance attributes. See EXECUTION ATTRIBUTES below.</p>
+<p>
+</p>
+<hr />
+<h1><a name="description">DESCRIPTION</a></h1>
+<p>An Argv object treats a command line as 3 separate entities: the
+<em>program</em>, the <em>options</em>, and the <em>args</em>. The <em>options</em> may be
+futher subdivided into user-defined <em>option sets</em> by use of the
+<a href="#item_optset"><code>optset</code></a> method. When one of the <em>execution methods</em> is called, the
+parts are reassembled into a single list and passed to the underlying
+Perl execution function.</p>
+<p>Compare this with the way Perl works natively, keeping the 0th element
+of the argv in <code>$0</code> and the rest in <code>@ARGV</code>.</p>
+<p>By default there's one option set, known as the <em>anonymous option
+set</em>, whose name is the null string. All parsed options go there.  The
 advanced user can define more option sets, parse options into them
 according to Getopt::Long-style descriptions, query or set the parsed
 values, and then reassemble them in any way desired at exec time.
 Declaring an option set automatically generates a set of methods for
-manipulating it (see below).</P>
-<P>All argument-parsing within Argv is done via Getopt::Long.</P>
-<P>
-<HR>
-<H1><A NAME="autoloading">AUTOLOADING</A></H1>
-<P>Argv employs the same technique made famous by the Shell module
-to allow any command name to be used as a method. E.g.</P>
-<PRE>
-        $obj-&gt;date-&gt;exec;</PRE>
-<P>will run the 'date' command. Internally this is translated into</P>
-<PRE>
-        $obj-&gt;argv('date')-&gt;exec;</PRE>
-<P>
-<HR>
-<H1><A NAME="functional interface">FUNCTIONAL INTERFACE</A></H1>
-<P>Because the extensions to <CODE>system/exec/qx</CODE> described here may be
-useful in writing portable programs, they're made available for export
-as traditional functions. Thus:</P>
-<PRE>
-    use Argv qw(system exec qv);</PRE>
-<P>will override the Perl builtins. There's no way to override the
-operator <A HREF="#item_qx"><CODE>qx()</CODE></A> so an alias <CODE>qv()</CODE> is provided.</P>
-<P>
-<HR>
-<H1><A NAME="constructor">CONSTRUCTOR</A></H1>
-<PRE>
-    my $obj = Argv-&gt;new(@list)</PRE>
-<P>The <CODE>@list</CODE> is what will be parsed/executed/etc by subsequent method
+manipulating it (see below).</p>
+<p>All argument-parsing within Argv is done via Getopt::Long.</p>
+<p>
+</p>
+<hr />
+<h1><a name="autoloading">AUTOLOADING</a></h1>
+<p>Argv employs the same technique made famous by the Shell module
+to allow any command name to be used as a method. E.g.</p>
+<pre>
+        $obj-&gt;date-&gt;exec;</pre>
+<p>will run the 'date' command. Internally this is translated into</p>
+<pre>
+        $obj-&gt;argv('date')-&gt;exec;</pre>
+<p>See the <a href="#item_argv"><code>argv</code></a> method below.</p>
+<p>
+</p>
+<hr />
+<h1><a name="functional_interface">FUNCTIONAL INTERFACE</a></h1>
+<p>Because the extensions to <code>system/exec/qx</code> described above may be
+helpful in writing portable programs, the methods are also made
+available for export as traditional functions. Thus:</p>
+<pre>
+    use Argv qw(system exec qv);</pre>
+<p>will override the Perl builtins. There's no way (that I know of) to
+override the operator <a href="#item_qx"><code>qx()</code></a> so an alias <code>qv()</code> is provided.</p>
+<p>
+</p>
+<hr />
+<h1><a name="constructor">CONSTRUCTOR</a></h1>
+<pre>
+    my $obj = Argv-&gt;new(@list)</pre>
+<p>The <code>@list</code> is what will be parsed/executed/etc by subsequent method
 calls. During initial construction, the first element of the list is
-separated off as the <EM>program</EM>; the rest is lumped together as part of
-the <EM>args</EM> until and unless option parsing is done, in which case
-matched options are shifted into collectors for their various <EM>option
-sets</EM>. You can also create a ``predigested'' instance by passing any or
-all of the prog, opt, or arg parts as array refs. E.g.</P>
-<PRE>
-    Argv-&gt;new([qw(cvs ci)], [qw(-l -n)], qw(file1 file2 file3));</PRE>
-<P>Predigested options are placed in the default (anonymous) option set.</P>
-<P>The constructor can be used as a class or instance method. In the
+separated off as the <em>program</em>; the rest is lumped together as part of
+the <em>args</em> until and unless option parsing is done, in which case
+matched options are shifted into collectors for their various <em>option
+sets</em>. You can also create a ``predigested'' instance by passing any or
+all of the prog, opt, or arg parts as array refs. E.g.</p>
+<pre>
+    Argv-&gt;new([qw(cvs ci)], [qw(-l -n)], qw(file1 file2 file3));</pre>
+<p>Predigested options are placed in the default (anonymous) option set.</p>
+<p>The constructor can be used as a class or instance method. In the
 latter case the new object is a deep (full) clone of its progenitor.
-In fact 'clone' is aliased to 'new', allowing clones to be created
-via:</P>
-<PRE>
-        my $copy = $orig-&gt;clone;</PRE>
-<P>The first argument to <CODE>new()</CODE> or <CODE>clone()</CODE> can be a hash-ref, which
-will be used to set <EM>execution attributes</EM> at construction time. I.e.:</P>
-<PRE>
-    my $obj = Argv-&gt;new({autochomp =&gt; 1, stderr =&gt; 0}, @ARGV);</PRE>
-<P>you may choose to add the command line later:</P>
-<PRE>
+In fact there's a <code>clone</code> method which is an alias to <code>new</code>, allowing
+clones to be created via:</p>
+<pre>
+        my $copy = $orig-&gt;clone;</pre>
+<p>The first argument to <code>new()</code> or <code>clone()</code> may be a hash-ref, which
+will be used to set <em>execution attributes</em> at construction time. I.e.:</p>
+<pre>
+    my $obj = Argv-&gt;new({autochomp =&gt; 1, stderr =&gt; 0}, @ARGV);</pre>
+<p>You may choose to create an object and add the command line later:</p>
+<pre>
     my $obj = Argv-&gt;new;
     $obj-&gt;prog('cat');
-    $obj-&gt;args('/etc/motd');</PRE>
-<P>Or</P>
-<PRE>
+    $obj-&gt;args('/etc/motd');</pre>
+<p>Or</p>
+<pre>
     my $obj = Argv-&gt;new({autochomp=&gt;1});
-    my $motd = $obj-&gt;argv(qw(cat /etc/motd))-&gt;qx;</PRE>
-<P>Or (using the autoloading interface)</P>
-<PRE>
-    my $motd = $obj-&gt;cat('/etc/motd')-&gt;qx;</PRE>
-<P>
-<HR>
-<H1><A NAME="methods">METHODS</A></H1>
-<P>
-<H2><A NAME="instance methods">INSTANCE METHODS</A></H2>
-<UL>
-<LI><STRONG><A NAME="item_prog"><CODE>prog()</CODE></A></STRONG><BR>
-
-Returns or sets the name of the program (the <CODE>&quot;argv[0]&quot;</CODE>). This can be
-a list, e.g. <CODE>qw(rcs co)</CODE> or an array reference.
-<P></P>
-<LI><STRONG><A NAME="item_opts"><CODE>opts()</CODE></A></STRONG><BR>
-
+    my $motd = $obj-&gt;argv(qw(cat /etc/motd))-&gt;qx;</pre>
+<p>Or (using the autoloading interface)</p>
+<pre>
+    my $motd = $obj-&gt;cat('/etc/motd')-&gt;qx;</pre>
+<p>
+</p>
+<hr />
+<h1><a name="methods">METHODS</a></h1>
+<p>
+</p>
+<h2><a name="instance_methods">INSTANCE METHODS</a></h2>
+<ul>
+<li><strong><a name="item_prog"><code>prog()</code></a></strong><br />
+</li>
+Returns or sets the name of the program (the <code>&quot;argv[0]&quot;</code>). The
+argument may be a list, e.g. <code>qw(rcs co)</code> or an array reference.
+<p></p>
+<li><strong><a name="item_opts"><code>opts()</code></a></strong><br />
+</li>
 Returns or sets the list of operands (aka arguments). As above, it may
 be passed a list or an array reference. This is simply the member of
-the class of opts<EM>NAME</EM>() methods (see below) whose &lt;NAME&gt; is null;
-it's part of the predefined <EM>anonymous option set</EM>.
-<P></P>
-<LI><STRONG><A NAME="item_args"><CODE>args()</CODE></A></STRONG><BR>
-
+the class of opts<em>NAME</em>() methods (see below) whose &lt;NAME&gt; is null;
+it's part of the predefined <em>anonymous option set</em>.
+<p></p>
+<li><strong><a name="item_args"><code>args()</code></a></strong><br />
+</li>
 Returns or sets the list of operands (aka arguments).  If called in a
 void context and without args, the effect is to set the list of
-operands to <CODE>()</CODE>.
-<P></P>
-<LI><STRONG><A NAME="item_optset">optset(&lt;list-of-set-names&gt;);</A></STRONG><BR>
-
-For each name <EM>NAME</EM> in the parameter list, an <EM>option set</EM> of that
+operands to <code>()</code>.
+<p></p>
+<li><strong><a name="item_argv"><code>argv()</code></a></strong><br />
+</li>
+Allows you to set the prog, opts, and args in one method call. It takes
+the same arguments as the constructor (above); the only difference is
+it operates on a pre-existing object to replace its attributes. I.e.
+<pre>
+    my $obj = ClearCase::Argv-&gt;new;
+    $obj-&gt;argv('cmd', [qw(-opt1 -opt2)], qw(arg1 arg2));</pre>
+<p>is equivalent to</p>
+<pre>
+    my $obj = ClearCase::Argv-&gt;new('cmd', [qw(-opt1 -opt2)], qw(arg1 arg2));</pre>
+<p></p>
+<li><strong><a name="item_optset">optset(&lt;list-of-set-names&gt;);</a></strong><br />
+</li>
+For each name <em>NAME</em> in the parameter list, an <em>option set</em> of that
 name is declared and 3 new methods are registered dynamically:
-<A HREF="#item_parseNAME"><CODE>parseNAME(), optsNAME(), and flagNAME()</CODE></A>. These methods are
-described below: note that the <EM>anonymous option set</EM> (see <EM>OPTION
-SETS</EM>) is predefined, so the methods <CODE>parse(), opts(), and flag()</CODE> are
+<a href="#item_parsename"><code>parseNAME(), optsNAME(), and flagNAME()</code></a>. These methods are
+described below: note that the <em>anonymous option set</em> (see <em>OPTION
+SETS</em>) is predefined, so the methods <code>parse(), opts(), and flag()</code> are
 always available.  Most users won't need to define any other sets.
 Note that option-set names are forced to upper case. E.g.:
-<PRE>
-    $obj-&gt;optset('FOO');</PRE>
-<P></P>
-<LI><STRONG><A NAME="item_parseNAME">parse<EM>NAME</EM>(...option-descriptions...)</A></STRONG><BR>
-
+<pre>
+    $obj-&gt;optset('FOO');</pre>
+<p></p>
+<li><strong><a name="item_parsename">parse<em>NAME</em>(...option-descriptions...)</a></strong><br />
+</li>
 Takes a list of option descriptions and uses Getopt::Long::GetOptions()
-to parse them out of the current argv <STRONG>and into option set <EM>NAME</EM></STRONG>.
-The opt-descs are exactly as supported by parse<EM>FOO</EM>() are exactly the
+to parse them out of the current argv <strong>and into option set <em>NAME</em></strong>.
+The opt-descs are exactly as supported by parse<em>FOO</em>() are exactly the
 same as those described for Getopt::Long, except that no linkage
 argument is allowed. E.g.:
-<PRE>
-    $obj-&gt;parseFOO(qw(file=s list=s@ verbose));</PRE>
-<P></P>
-<LI><STRONG><A NAME="item_optsNAME">opts<EM>NAME</EM>()</A></STRONG><BR>
-
-Returns or sets the list of options in the <STRONG>option set <EM>NAME</EM></STRONG>.
-<P></P>
-<LI><STRONG><A NAME="item_flagNAME">flag<EM>NAME</EM>()</A></STRONG><BR>
-
+<pre>
+    $obj-&gt;parseFOO(qw(file=s list=s@ verbose));</pre>
+<p></p>
+<li><strong><a name="item_optsname">opts<em>NAME</em>()</a></strong><br />
+</li>
+Returns or sets the list of options in the <strong>option set <em>NAME</em></strong>.
+<p></p>
+<li><strong><a name="item_flagname">flag<em>NAME</em>()</a></strong><br />
+</li>
 Sets or gets the value of a flag in the appropriate optset, e.g.:
-<PRE>
+<pre>
     print &quot;blah blah blah\n&quot; if $obj-&gt;flagFOO('verbose');
-    $obj-&gt;flagFOO('verbose' =&gt; 1);</PRE>
-<P></P>
-<LI><STRONG><A NAME="item_extract">extract</A></STRONG><BR>
-
-Takes an <EM>optset</EM> name and a list of option descs; creates the named
+    $obj-&gt;flagFOO('verbose' =&gt; 1);</pre>
+<p></p>
+<li><strong><a name="item_extract">extract</a></strong><br />
+</li>
+Takes an <em>optset</em> name and a list of option descs; creates the named
 optset, extracts any of the named options, places them in the specified
 optset, and returns them.
-<P></P>
-<LI><STRONG><A NAME="item_quote"><CODE>quote(@list)</CODE></A></STRONG><BR>
-
+<p></p>
+<li><strong><a name="item_quote"><code>quote(@list)</code></a></strong><br />
+</li>
 Protects the argument list against exposure to a shell by quoting each
-element. This method is invoked automatically by the <EM>system</EM> method
-on Windows platforms, where the underlying <EM>system</EM> primitive always
-uses a shell, and by the <EM>qx</EM> method on all platforms since it invokes
+element. This method is invoked automatically by the <em>system</em> method
+on Windows platforms, where the underlying <em>system</em> primitive always
+uses a shell, and by the <em>qx</em> method on all platforms since it invokes
 a shell on all platforms.
-<P>The automatic use of <EM>quote</EM> can be turned off via the <EM>autoquote</EM>
-method (see).</P>
-<P>IMPORTANT: this method quotes its argument list <STRONG>in place</STRONG>. In other
-words, it may modify its arguments.</P>
-<P></P>
-<LI><STRONG><A NAME="item_glob">glob</A></STRONG><BR>
-
-Expands the argument list using the Perl <EM>glob</EM> builtin. Primarily
+<p>The automatic use of <em>quote</em> can be turned off via the <em>autoquote</em>
+method (see).</p>
+<p>IMPORTANT: this method quotes its argument list <strong>in place</strong>. In other
+words, it may modify its arguments.</p>
+<p></p>
+<li><strong><a name="item_glob">glob</a></strong><br />
+</li>
+Expands the argument list using the Perl <em>glob</em> builtin. Primarily
 useful on Windows where the invoking shell does not do this for you.
-<P>Automatic use of <EM>glob</EM> on Windows can be enabled via the <EM>autoglob</EM>
-method (vide infra).</P>
-<P></P>
-<LI><STRONG><A NAME="item_dump">dump</A></STRONG><BR>
-
+<p>Automatic use of <em>glob</em> on Windows can be enabled via the <em>autoglob</em>
+method (vide infra).</p>
+<p></p>
+<li><strong><a name="item_dump">dump</a></strong><br />
+</li>
 A no-op except for printing the state of the invoking instance to
 stderr. Potentially useful for debugging in situations where access to
-<EM>perl -d</EM> is limited, e.g. across a socket connection or in a
-crontab. Invoked automatically at <EM>dbglevel=3</EM>.
-<P></P>
-<LI><STRONG><A NAME="item_readonly">readonly</A></STRONG><BR>
-
+<em>perl -d</em> is limited, e.g. across a socket connection or in a
+crontab. Invoked automatically at <em>dbglevel=3</em>.
+<p></p>
+<li><strong><a name="item_readonly">readonly</a></strong><br />
+</li>
 Sets/gets the ``readonly'' attribute, which is a string indicating
 whether the instance is to be used for read operations only. If the
-attribute's value starts with <CODE>y</CODE>, execution methods will be allowed
-to proceed even if the <A HREF="#item_noexec"><CODE>$obj-&gt;noexec</CODE></A> attribute is set.
-<P>The value of this is that it enables your script to have a <CODE>-n</CODE> flag,
-a la <CODE>make -n</CODE>, pretty easily by careful management of
-<A HREF="#item_noexec"><CODE>-&gt;noexec</CODE></A>.  Consider a script which runs <CODE>ls</CODE> to determine
-whether a file exists and then, conditionally, <CODE>rm -f</CODE> to remove it.
-Causing a <CODE>-n</CODE> flag from the user to set <A HREF="#item_noexec"><CODE>-&gt;noexec</CODE></A> alone would
-break the program logic since the <CODE>ls</CODE> would be skipped too. But, if
-you take care to use objects with the <EM>readonly</EM> attribute set for all
-read-only operations, perhaps by defining a special read-only object:</P>
-<PRE>
+attribute's value starts with <code>y</code>, execution methods will be allowed
+to proceed even if the <a href="#item_noexec"><code>$obj-&gt;noexec</code></a> attribute is set.
+<p>The value of this is that it enables your script to have a <code>-n</code> flag,
+a la <code>make -n</code>, pretty easily by careful management of
+<a href="#item_readonly"><code>-&gt;readonly</code></a> and <a href="#item_noexec"><code>-&gt;noexec</code></a>.  Consider a script which runs
+<code>ls</code> to determine whether a file exists and then, conditionally, uses
+<code>rm -f</code> to remove it.  Causing a <code>-n</code> flag from the user to set
+<a href="#item_noexec"><code>-&gt;noexec</code></a> alone would break the program logic since the <code>ls</code>
+would be skipped too. But, if you take care to use objects with the
+<em>readonly</em> attribute set for all read-only operations, perhaps by
+defining a special read-only object:</p>
+<pre>
         my $ro = Argv-&gt;new;
-        $ro-&gt;readonly('yes');</PRE>
-<P>then a <CODE>-n</CODE> flag will cause only write operations to be skipped.</P>
-<P>Note that, if you choose to use this feature at all, determining which
+        $ro-&gt;readonly('yes');</pre>
+<p>then the <code>-n</code> flag will cause only write operations to be skipped.</p>
+<p>Note that, if you choose to use this feature at all, determining which
 operations are readonly is entirely the programmer's responsibility.
 There's no way for Argv to determine whether a child process will
-modify state.</P>
-<P></P></UL>
-<P>
-<H2><A NAME="execution methods">EXECUTION METHODS</A></H2>
-<P>The three methods below are direct analogues of the Perl builtins.
-They simply reassemble a command line from the <EM>prog</EM>, <EM>opts</EM>, and
-<EM>args</EM> parts according to the option-set rules described below and
-invoke their builtin equivalent on it.</P>
-<UL>
-<LI><STRONG>system([&lt;optset-list&gt;])</STRONG><BR>
-
+modify state.</p>
+<p></p></ul>
+<p>
+</p>
+<h2><a name="execution_methods">EXECUTION METHODS</a></h2>
+<p>The three methods below are direct analogues of the Perl builtins.
+They simply reassemble a command line from the <em>prog</em>, <em>opts</em>, and
+<em>args</em> parts according to the option-set rules described below and
+invoke their builtin equivalent on it.</p>
+<ul>
+<li><strong>system([&lt;optset-list&gt;])</strong><br />
+</li>
 Reassembles the argv and invokes system(). Return value and value of
-$?, $!, etc. are just as described in <EM>perlfunc/``system''</EM>
-<P>Arguments to this method determine which of the parsed option-sets will
-be used in the executed argv. If passed no arguments, <A HREF="#item_system"><CODE>$obj-&gt;system</CODE></A>
+$?, $!, etc. are just as described in <em>perlfunc/``system''</em>
+<p>Arguments to this method determine which of the parsed option-sets will
+be used in the executed argv. If passed no arguments, <a href="#item_system"><code>$obj-&gt;system</code></a>
 uses the value of the 'dfltsets' attribute as the list of desired sets.
-The default value of 'dfltsets' is the anonymous option set.</P>
-<P>An option set may be requested by passing its name (with an optional
+The default value of 'dfltsets' is the anonymous option set.</p>
+<p>An option set may be requested by passing its name (with an optional
 leading '+') or explicitly rejected by using its name with a leading
-'-'. Thus, given the existence of option sets <EM>ONE, TWO, and THREE</EM>,
-the following are legal:</P>
-<PRE>
+'-'. Thus, given the existence of option sets <em>ONE, TWO, and THREE</em>,
+the following are legal:</p>
+<pre>
     $obj-&gt;system;                       # use the anonymous set only
     $obj-&gt;system('+');                  # use all option sets
-    $obj-&gt;system(qw(ONE THREE);         # use sets ONE and THREE</PRE>
-<P>The following sequence would also use sets ONE and THREE.</P>
-<PRE>
+    $obj-&gt;system(qw(ONE THREE);         # use sets ONE and THREE</pre>
+<p>The following sequence would also use sets ONE and THREE.</p>
+<pre>
     $obj-&gt;dfltsets({ONE =&gt; 1, THREE =&gt; 1});
-    $obj-&gt;system;</PRE>
-<P>while this would use all parsed options:</P>
-<PRE>
+    $obj-&gt;system;</pre>
+<p>while this would use all parsed options:</p>
+<pre>
     $obj-&gt;dfltsets({'+' =&gt; 1});
-    $obj-&gt;system;</PRE>
-<P>and this would set the default to none class-wide, and then use it:</P>
-<PRE>
+    $obj-&gt;system;</pre>
+<p>and this would set the default to none class-wide, and then use it:</p>
+<pre>
     $obj-&gt;dfltsets({'-' =&gt; 1});
-    $obj-&gt;system;</PRE>
-<P>By default the <A HREF="#item_system"><CODE>$obj-&gt;system</CODE></A> method autoquotes its arguments <EM>iff</EM>
+    $obj-&gt;system;</pre>
+<p>By default the <a href="#item_system"><code>$obj-&gt;system</code></a> method autoquotes its arguments <em>iff</em>
 the platform is Windows and the arguments are a list, because in this
 case a shell is always used. This behavior can be toggled with
-<A HREF="#item_autoquote"><CODE>$obj-&gt;autoquote</CODE></A>.  <EM>Note: if and when Perl 5.6 fixes this ``bug'',
-Argv will be changed to examine the value of $]</EM>.</P>
-<P></P>
-<LI><STRONG><CODE>exec()</CODE></STRONG><BR>
-
-Similar to <EM>system</EM> above, but never returns. On Windows, it blocks
+<a href="#item_autoquote"><code>$obj-&gt;autoquote</code></a>.  <em>Note: if and when Perl 5.6 fixes this ``bug'',
+Argv will be changed to examine the value of $]</em>.</p>
+<p></p>
+<li><strong><code>exec()</code></strong><br />
+</li>
+Similar to <em>system</em> above, but never returns. On Windows, it blocks
 until the new process finishes for a more UNIX-like behavior than
-the <EM>exec</EM> implemented by the C runtime library on Windows, if
-the <STRONG>execwait</STRONG> attribute is set. This is actually implemented as
-<PRE>
-    exit $obj-&gt;system(LIST);</PRE>
-<P>and thus all <A HREF="#item_system"><CODE>system</CODE></A> shell-quoting issues apply</P>
-<P>Option sets are handled as described in <EM>system</EM> above.</P>
-<P></P>
-<LI><STRONG><A NAME="item_qx"><CODE>qx()</CODE></A></STRONG><BR>
-
-Same semantics as described in <EM>perlfunc/``qx''</EM> but has the capability
+the <em>exec</em> implemented by the C runtime library on Windows, if
+the <strong>execwait</strong> attribute is set. This is actually implemented as
+<pre>
+    exit $obj-&gt;system(LIST);</pre>
+<p>and thus all <a href="#item_system"><code>system</code></a> shell-quoting issues apply</p>
+<p>Option sets are handled as described in <em>system</em> above.</p>
+<p></p>
+<li><strong><a name="item_qx"><code>qx()</code></a></strong><br />
+</li>
+Same semantics as described in <em>perlfunc/``qx''</em> but has the capability
 to process only a set number of arguments at a time to avoid exceeding
 the shell's line-length limit. This value is settable with the
-<EM>qxargs</EM> method.
-<P>Also, if <EM>autoquote</EM> is set the arguments are quoted to protect them
-against the platform-standard shell <EM>on all platforms</EM>.</P>
-<P>Option sets are handled as described in <EM>system</EM> above.</P>
-<P></P></UL>
-<P>
-<H2><A NAME="execution attributes">EXECUTION ATTRIBUTES</A></H2>
-<P>The behavior of the <EM>execution methods</EM> <CODE>system, exec, and qx</CODE> is
-governed by a set of <EM>execution attributes</EM>, which are in turn
+<em>qxargs</em> method.
+<p>One difference from the builtin <em>perlfunc/``qx''</em> is that the builtin
+allows you to leave off the double quotes around the command string
+(though they are always there implicitly), whereas the <em>qv()</em>
+functional interface <em>must use literal quotes</em>. For instance, using
+<em>qx()</em> you can use either of:</p>
+<pre>
+    my @results = qx(command string here);
+    my @results = qx(&quot;command string here&quot;);</pre>
+<p>which are semantically identical, but with <em>qv()</em> you must use the
+latter form.</p>
+<p>Also, if <em>autoquote</em> is set the arguments are escaped to protect them
+against the platform-standard shell <em>on all platforms</em>.</p>
+<p>Option sets are handled as described in <em>system</em> above.</p>
+<p></p></ul>
+<p>
+</p>
+<h2><a name="execution_attributes">EXECUTION ATTRIBUTES</a></h2>
+<p>The behavior of the <em>execution methods</em> <code>system, exec, and qx</code> is
+governed by a set of <em>execution attributes</em>, which are in turn
 manipulated via a set of eponymous methods. These methods are
-auto-generated and thus share certain common characteristics:</P>
-<UL>
-<LI><STRONG><A NAME="item_Translucency">Translucency</A></STRONG><BR>
-
+auto-generated and thus share certain common characteristics:</p>
+<ul>
+<li><strong><a name="item_translucency">Translucency</a></strong><br />
+</li>
 They can all be invoked as class or instance methods.  If used as an
 instance method the attribute is set only on that object; if used on
 the class it sets or gets the default for all instances which haven't
-overridden it.  This is inspired by the section on <EM>translucent
-attributes</EM> in Tom Christiansen's <EM>perltootc</EM> tutorial.
-<P></P>
-<LI><STRONG><A NAME="item_Class_Defaults">Class Defaults</A></STRONG><BR>
-
+overridden it.  This is inspired by the section on <em>translucent
+attributes</em> in Tom Christiansen's <em>perltootc</em> tutorial.
+<p></p>
+<li><strong><a name="item_class_defaults">Class Defaults</a></strong><br />
+</li>
 Each attribute has a default which may be overridden with an
 environment variable by prepending the class name, e.g. ARGV_QXARGS=256
 or ARGV_STDERR=0;
-<P></P>
-<LI><STRONG><A NAME="item_Context_Sensitivity">Context Sensitivity</A></STRONG><BR>
-
+<p></p>
+<li><strong><a name="item_context_sensitivity">Context Sensitivity</a></strong><br />
+</li>
 The attribute value is always a scalar. If a value is passed it
 becomes the new value of the attribute and the object or class is
-returned. If no value is passed <EM>and there is a valid return
-context</EM>, the current value is returned. In a void context with no
+returned. If no value is passed <em>and there is a valid return
+context</em>, the current value is returned. In a void context with no
 parameter, the attribute value is set to 1.
-<P></P>
-<LI><STRONG><A NAME="item_Stickiness">Stickiness</A></STRONG><BR>
-
-A subtlety: if an <EM>execution attribute</EM> is set in a void context, that
-attribute is <EM>``sticky''</EM>, i.e. it retains its state until explicitly
-changed. But if <EM>a new value is provided</EM> and the context is not void,
-the new value is <STRONG>temporary</STRONG>. It lasts until the next <EM>execution
-method</EM> (<CODE>system, exec, or qx</CODE>) invocation, after which the previous
+<p></p>
+<li><strong><a name="item_stickiness">Stickiness (deprecated)</a></strong><br />
+</li>
+A subtlety: if an <em>execution attribute</em> is set in a void context, that
+attribute is <em>``sticky''</em>, i.e. it retains its state until explicitly
+changed. But <em>if a new value is provided and the context is not void</em>,
+the new value is <strong>temporary</strong>. It lasts until the next <em>execution
+method</em> (<code>system, exec, or qx</code>) invocation, after which the previous
 value is restored. This feature allows locutions like this:
-<PRE>
-        $obj-&gt;cmd('date')-&gt;stderr(1)-&gt;system;</PRE>
-<P>Assuming that the <CODE>$obj</CODE> object already exists and has a set of
-attributes; we can override one of them at execution time.  More
-examples:</P>
-<PRE>
+<pre>
+        $obj-&gt;cmd('date')-&gt;stderr(1)-&gt;system;</pre>
+<p>Assuming that the <code>$obj</code> object already exists and has a set of
+attributes; we can override one of them at execution time. The next
+time <code>$obj</code> is used, stderr will go back to wherever it was directed
+before. More examples:</p>
+<pre>
         $obj-&gt;stdout(1);          # set attribute, sticky
         $obj-&gt;stdout;             # same as above
         $foo = $obj-&gt;stdout;      # get attribute value
-        $obj2 = $obj-&gt;stdout(1);  # set to 1 (temporary), return $obj</PRE>
-<P>WARNING: this attribute-stacking has turned out to be a bad idea. Its
-use is now deprecated.</P>
-<P></P></UL>
-<UL>
-<LI><STRONG><A NAME="item_autochomp">autochomp</A></STRONG><BR>
-
-All data returned by the <A HREF="#item_qx"><CODE>qx</CODE></A> method is chomped first. Unset by default.
-<P></P>
-<LI><STRONG><A NAME="item_autofail">autofail</A></STRONG><BR>
-
-When set, the program will exit immediately if the <A HREF="#item_system"><CODE>system</CODE></A> or <A HREF="#item_qx"><CODE>qx</CODE></A>
+        $obj2 = $obj-&gt;stdout(1);  # set to 1 (temporary), return $obj</pre>
+<p>WARNING: this attribute-stacking has turned out to be a bad idea. Its
+use is now deprecated. There are other ways to get to the same place:
+you can maintain multiple objects, each of which has different but
+permanent attributes. Or you can make a temporary copy of the object
+and modify that, e.g.:</p>
+<pre>
+    $obj-&gt;clone-&gt;stderr(1)-&gt;system;
+    $obj-&gt;clone({stderr=&gt;1})-&gt;system;</pre>
+<p>each of which will leave <code>$obj</code> unaffected.</p>
+<p></p></ul>
+<ul>
+<li><strong><a name="item_autochomp">autochomp</a></strong><br />
+</li>
+All data returned by the <a href="#item_qx"><code>qx</code></a> method is chomped first. Unset by default.
+<p></p>
+<li><strong><a name="item_autofail">autofail</a></strong><br />
+</li>
+When set, the program will exit immediately if the <a href="#item_system"><code>system</code></a> or <a href="#item_qx"><code>qx</code></a>
 methods detect a nonzero status. Unset by default.
-<P>Autofail may also be given a code-ref, in which case that function will
-be called upon error. This provides a basic ``exception-handling'' system:</P>
-<PRE>
-    $obj-&gt;autofail(sub { print &quot;caught an exception\n&quot;; exit 17 });</PRE>
-<P>Any failed executions by <CODE>$obj</CODE> will call <CODE>handler()</CODE>. Alternatively,
-if the reference provided is an array-ref, the first element of that
-array is assumed to be a code-ref as above and the rest of the array is
-passed as args to the function on failure.</P>
-<P>If the reference is to a scalar, the scalar is incremented for each
-error and execution continues, e.g.</P>
-<PRE>
+<p>Autofail may also be given a code-ref, in which case that function will
+be called upon error. This provides a basic exception-handling system:</p>
+<pre>
+    $obj-&gt;autofail(sub { print STDERR &quot;caught an exception\n&quot;; exit 17 });</pre>
+<p>Any failed executions by <code>$obj</code> will result in the above message and
+an immediate exit with return code == 17. Alternatively, if the
+reference provided is an array-ref, the first element of that array is
+assumed to be a code-ref as above and the rest of the array is passed
+as args to the function on failure. Thus:</p>
+<pre>
+    $obj-&gt;autofail([&amp;handler, $arg1, $arg2]);</pre>
+<p>Will call <code>handler($arg1, $arg2)</code> on error.</p>
+<p>If the reference is to a scalar, the scalar is incremented for each
+error and execution continues. Switching to a class method example:</p>
+<pre>
     my $rc = 0;
-    $obj-&gt;autofail(\$rc);
-    ...
-    print &quot;There were $rc failures counted\n&quot;;
-    exit($rc);</PRE>
-<P></P>
-<LI><STRONG><A NAME="item_envp">envp</A></STRONG><BR>
-
+    Argv-&gt;autofail(\$rc);
+    [do stuff involving Argv objects]
+    print &quot;There were $rc failures counted by Argv\n&quot;;
+    exit($rc);</pre>
+<p></p>
+<li><strong><a name="item_envp">envp</a></strong><br />
+</li>
 Allows a different environment to be provided during execution of the
 object. This setting is in scope only for the child process and will
 not affect the environment of the current process.  Takes a hashref:
-<PRE>
+<pre>
     my %newenv = %ENV;
     $newenv{PATH} .= ':/usr/ucb';
     delete @newenv{qw(TERM LANG LD_LIBRARY_PATH)};
-    $obj-&gt;envp(\%newenv);</PRE>
-<P>Subsequent invocations of <EM>$obj</EM> will add <EM>/usr/ucb</EM> to PATH and
-subtract TERM, LANG, and LD_LIBRARY_PATH;</P>
-<P></P>
-<LI><STRONG><A NAME="item_syfail%2Cqxfail">syfail,qxfail</A></STRONG><BR>
-
-Similar to <A HREF="#item_autofail"><CODE>autofail</CODE></A> but apply only to <A HREF="#item_system"><CODE>system()</CODE></A> or <A HREF="#item_qx"><CODE>qx()</CODE></A>
+    $obj-&gt;envp(\%newenv);</pre>
+<p>Subsequent invocations of <em>$obj</em> will add <em>/usr/ucb</em> to PATH and
+subtract TERM, LANG, and LD_LIBRARY_PATH.</p>
+<p></p>
+<li><strong><a name="item_syfail%2cqxfail">syfail,qxfail</a></strong><br />
+</li>
+Similar to <a href="#item_autofail"><code>autofail</code></a> but apply only to <a href="#item_system"><code>system()</code></a> or <a href="#item_qx"><code>qx()</code></a>
 respectively. Unset by default.
-<P></P>
-<LI><STRONG><A NAME="item_autoglob">autoglob</A></STRONG><BR>
-
-If set, the <A HREF="#item_glob"><CODE>glob()</CODE></A> function is applied to the operands
-(<A HREF="#item_args"><CODE>$obj-&gt;args</CODE></A>) on Windows only. Unset by default.
-<P></P>
-<LI><STRONG><A NAME="item_autoquote">autoquote</A></STRONG><BR>
-
+<p></p>
+<li><strong><a name="item_autoglob">autoglob</a></strong><br />
+</li>
+If set, the <a href="#item_glob"><code>glob()</code></a> function is applied to the operands
+(<a href="#item_args"><code>$obj-&gt;args</code></a>) on Windows only. Unset by default.
+<p></p>
+<li><strong><a name="item_autoquote">autoquote</a></strong><br />
+</li>
 If set, the operands are automatically quoted against shell expansion
-before <A HREF="#item_system"><CODE>system()</CODE></A> on Windows and <A HREF="#item_qx"><CODE>qx()</CODE></A> on all platforms (since <A HREF="#item_qx"><CODE>qx</CODE></A>
-always invokes a shell, and <A HREF="#item_system"><CODE>system()</CODE></A> always does so on Windows).
+before <a href="#item_system"><code>system()</code></a> on Windows and <a href="#item_qx"><code>qx()</code></a> on all platforms (since <a href="#item_qx"><code>qx</code></a>
+always invokes a shell, and <a href="#item_system"><code>system()</code></a> always does so on Windows).
 Set by default.
-<P>An individual word of an argv can ``opt out'' of autoquoting by
-using a leading '^'. For instance:</P>
-<PRE>
-    ('aa', 'bb', &quot;^I'll do this one myself, thanks!&quot;, 'cc')</PRE>
-<P>The '^' is stripped off and the rest of the string left alone.</P>
-<P></P>
-<LI><STRONG><A NAME="item_dbglevel">dbglevel</A></STRONG><BR>
-
+<p>An individual word of an argv can ``opt out'' of autoquoting by
+using a leading '^'. For instance:</p>
+<pre>
+    ('aa', 'bb', &quot;^I'll do this one myself, thanks!&quot;, 'cc')</pre>
+<p>The '^' is stripped off and the rest of the string left alone.</p>
+<p></p>
+<li><strong><a name="item_dbglevel">dbglevel</a></strong><br />
+</li>
 Sets the debug level. Level 0 (the default) means no debugging, level 1
 prints each command before executing it, and higher levels offer
 progressively more output. All debug output goes to stderr.
-<P></P>
-<LI><STRONG><A NAME="item_dfltsets">dfltsets</A></STRONG><BR>
-
-Sets and/or returns the default set of <EM>option sets</EM> to be used in
+<p></p>
+<li><strong><a name="item_dfltsets">dfltsets</a></strong><br />
+</li>
+Sets and/or returns the default set of <em>option sets</em> to be used in
 building up the command line at execution time.  The default-default is
-the <EM>anonymous option set</EM>. <EM>Note: this method takes a <STRONG>hash
-reference</STRONG> as its optional argument and returns a hash ref as well</EM>.
+the <em>anonymous option set</em>. <em>Note: this method takes a <strong>hash
+reference</strong> as its optional argument and returns a hash ref as well</em>.
 The selected sets are represented by the hash keys; the values are
 meaningless.
-<P></P>
-<LI><STRONG><A NAME="item_execwait">execwait</A></STRONG><BR>
-
-If set, <A HREF="#item_exec"><CODE>$obj-&gt;exec</CODE></A> on Windows blocks until the new process is
+<p></p>
+<li><strong><a name="item_execwait">execwait</a></strong><br />
+</li>
+If set, <a href="#item_exec"><code>$obj-&gt;exec</code></a> on Windows blocks until the new process is
 finished for a more consistent UNIX-like behavior than the traditional
-Win32 Perl port. Perl just uses the Windows <A HREF="#item_exec"><CODE>exec()</CODE></A> routine, which runs
+Win32 Perl port. Perl just uses the Windows <a href="#item_exec"><code>exec()</code></a> routine, which runs
 the new process in the background. Set by default.
-<P></P>
-<LI><STRONG><A NAME="item_inpathnorm">inpathnorm</A></STRONG><BR>
-
+<p></p>
+<li><strong><a name="item_inpathnorm">inpathnorm</a></strong><br />
+</li>
 If set, normalizes pathnames to their native format just before
 executing. This is NOT set by default; even when set it's a no-op
 except on Windows, where it converts /x/y/z to \x\y\z.
-<P></P>
-<LI><STRONG><A NAME="item_outpathnorm">outpathnorm</A></STRONG><BR>
-
-If set, normalizes pathnames returned by the <A HREF="#item_qx"><CODE>qx</CODE></A> method from
+<p></p>
+<li><strong><a name="item_outpathnorm">outpathnorm</a></strong><br />
+</li>
+If set, normalizes pathnames returned by the <a href="#item_qx"><code>qx</code></a> method from
 \-delimited to /-delimited. This is NOT set by default; even when set
 it's a no-op except on Windows.
-<P></P>
-<LI><STRONG><A NAME="item_noexec">noexec</A></STRONG><BR>
-
-Analogous to the <CODE>-n</CODE> flag to <EM>make</EM>; prints what would be executed
+<p></p>
+<li><strong><a name="item_noexec">noexec</a></strong><br />
+</li>
+Analogous to the <code>-n</code> flag to <em>make</em>; prints what would be executed
 without executing anything.
-<P></P>
-<LI><STRONG><A NAME="item_qxargs">qxargs</A></STRONG><BR>
-
+<p></p>
+<li><strong><a name="item_qxargs">qxargs</a></strong><br />
+</li>
 You can set a maximum number of arguments to be processed at a time,
-allowing you to blithely invoke e.g. <A HREF="#item_qx"><CODE>$obj-&gt;qx</CODE></A> on a list of any size
+allowing you to blithely invoke e.g. <a href="#item_qx"><code>$obj-&gt;qx</code></a> on a list of any size
 without fear of exceeding your shell's limits. A per-platform default
 is set; this method allows it to be changed. A value of 0 suppresses
 the behavior.
-<P></P>
-<LI><STRONG><A NAME="item_syxargs">syxargs</A></STRONG><BR>
-
-Analogous to <EM>qxargs</EM> but applies to <A HREF="#item_system"><CODE>system()</CODE></A> and is turned off by
-default. The reason is that <A HREF="#item_qx"><CODE>qx()</CODE></A> is typically used to <EM>read</EM> data
-whereas <A HREF="#item_system"><CODE>system()</CODE></A> is more often used to make stateful changes.
+<p></p>
+<li><strong><a name="item_syxargs">syxargs</a></strong><br />
+</li>
+Analogous to <em>qxargs</em> but applies to <a href="#item_system"><code>system()</code></a> and is turned off by
+default. The reason is that <a href="#item_qx"><code>qx()</code></a> is typically used to <em>read</em> data
+whereas <a href="#item_system"><code>system()</code></a> is more often used to make stateful changes.
 Consider that ``ls foo bar'' produces the same result if broken up into
 ``ls foo'' and ``ls bar'' but the same cannot be said for ``mv foo bar''.
-<P></P>
-<LI><STRONG><A NAME="item_stdout">stdout</A></STRONG><BR>
-
+<p></p>
+<li><strong><a name="item_stdout">stdout</a></strong><br />
+</li>
 Setting this attribute to 0, e.g:
-<PRE>
-    $obj-&gt;stdout(0);</PRE>
-<P>causes STDOUT to be closed during invocation of any of the <EM>execution
-methods</EM> <CODE>system, exec, and qx</CODE>, and restored when they finish. A
-fancy (and portable) way of saying <CODE>1&gt;/dev/null</CODE> without needing a
-shell. A value of 2 is the equivalent of <CODE>1&gt;&amp;2</CODE>.</P>
-<P></P>
-<LI><STRONG><A NAME="item_stderr">stderr</A></STRONG><BR>
-
-As above, for STDERR. A value of 1 is the equivalent of <CODE>2&gt;&amp;1</CODE>:
-<PRE>
-    @alloutput = $obj-&gt;stderr(1)-&gt;qx;</PRE>
-<P></P>
-<LI><STRONG><A NAME="item_quiet">quiet</A></STRONG><BR>
-
+<pre>
+    $obj-&gt;stdout(0);</pre>
+<p>causes STDOUT to be closed during invocation of any of the <em>execution
+methods</em> <code>system, exec, and qx</code>, and restored when they finish. A
+fancy (and portable) way of saying <code>1&gt;/dev/null</code> without needing a
+shell. A value of 2 is the equivalent of <code>1&gt;&amp;2</code>.</p>
+<p></p>
+<li><strong><a name="item_stderr">stderr</a></strong><br />
+</li>
+As above, for STDERR. A value of 1 is the equivalent of <code>2&gt;&amp;1</code>:
+<pre>
+    @alloutput = $obj-&gt;stderr(1)-&gt;qx;</pre>
+<p></p>
+<li><strong><a name="item_quiet">quiet</a></strong><br />
+</li>
 This attribute causes STDOUT to be closed during invocation of the
-<A HREF="#item_system"><CODE>system</CODE></A> and <CODE> exec</CODE> (but not <A HREF="#item_qx"><CODE>qx</CODE></A>) <EM>execution methods</EM>. It will
+<a href="#item_system"><code>system</code></a> and <code> exec</code> (but not <a href="#item_qx"><code>qx</code></a>) <em>execution methods</em>. It will
 cause the application to run more quietly. This takes precedence over
 a redirection of STDOUT using the &lt;$obj-&gt;stdout&gt; method above.
-<P></P></UL>
-<UL>
-<LI><STRONG><A NAME="item_attropts">attropts</A></STRONG><BR>
-
+<p></p></ul>
+<ul>
+<li><strong><a name="item_attropts">attropts</a></strong><br />
+</li>
 The above attributes can be set via method calls (e.g.
-<A HREF="#item_dbglevel"><CODE>$obj-&gt;dbglevel(1)</CODE></A>) or environment variables (ARGV_DBGLEVEL=1). Use
+<a href="#item_dbglevel"><code>$obj-&gt;dbglevel(1)</code></a>) or environment variables (ARGV_DBGLEVEL=1). Use
 of the &lt;$obj-&gt;attropts&gt; method allows them to be parsed from the command
-line as well, e.g. <EM>myscript -/dbglevel 1</EM>. If invoked as a class
+line as well, e.g. <em>myscript -/dbglevel 1</em>. If invoked as a class
 method it causes options of the same names as the methods above to be
-parsed (and removed) from the current <CODE>@ARGV</CODE> and set as class
+parsed (and removed) from the current <code>@ARGV</code> and set as class
 attributes.  As an instance method it parses and potentially depletes
 the current argument vector of that object, and sets instance attributes
 only. E.g.:
-<PRE>
-    Argv-&gt;attropts;</PRE>
-<P>would cause the script to parse the following command line:</P>
-<PRE>
-    script -/noexec 1 -/dbglevel=2 -flag1 -flag2 arg1 arg2 arg3 ...</PRE>
-<P>so as to remove the <CODE>-/noexec 1 -/dbglevel 2</CODE> and set the two class
-attrs.  The <CODE>-/</CODE> prefix is chosen to prevent conflicts with ``real''
+<pre>
+    Argv-&gt;attropts;</pre>
+<p>would cause the script to parse the following command line:</p>
+<pre>
+    script -/noexec 1 -/dbglevel=2 -flag1 -flag2 arg1 arg2 arg3 ...</pre>
+<p>so as to remove the <code>-/noexec 1 -/dbglevel 2</code> and set the two class
+attrs.  The <code>-/</code> prefix is chosen to prevent conflicts with ``real''
 flags. Abbreviations are allowed as long as they're unique within the
-set of -/ flags. As an instance method:</P>
-<PRE>
-    $obj-&gt;attropts;</PRE>
-<P>it will parse the current value of <A HREF="#item_args"><CODE>$obj-&gt;args</CODE></A> and run</P>
-<PRE>
-    $obj-&gt;foo(1);</PRE>
-<P>for every instance of <CODE>-/foo=1</CODE> found there.</P>
-<P></P></UL>
-<P>
-<HR>
-<H1><A NAME="porting">PORTING</A></H1>
-<P>This module is known to work on Solaris 2.5-8 and Windows 2000 SP2, and
-with perl 5.004_04 and 5.6.  As these platforms are quite different,
-there should be no <EM>major</EM> portability issues, but please send bug
-reports or patches to the address below. Recent testing is with
-newer (5.6+) versions of Perl so some backporting may be necessary
-for older Perls.</P>
-<P>
-<HR>
-<H1><A NAME="author">AUTHOR</A></H1>
-<P>David Boyce &lt;<A HREF="mailto:dsb@boyski.com">dsb@boyski.com</A>&gt;</P>
-<P>
-<HR>
-<H1><A NAME="copyright">COPYRIGHT</A></H1>
-<P>Copyright (c) 1999-2002 David Boyce. All rights reserved.  This Perl
+set of -/ flags. As an instance method:</p>
+<pre>
+    $obj-&gt;attropts;</pre>
+<p>it will parse the current value of <a href="#item_args"><code>$obj-&gt;args</code></a> and run</p>
+<pre>
+    $obj-&gt;foo(1);</pre>
+<p>for every instance of <code>-/foo=1</code> found there.</p>
+<p></p></ul>
+<p>
+</p>
+<hr />
+<h1><a name="porting">PORTING</a></h1>
+<p>This module is known to work on Solaris 2.5.1-8 and Windows NT4 and
+2000, using perl 5.004_04 and 5.6.1.  As these platforms are quite
+different, there should be no <em>major</em> problems using it on other
+platforms or perl versions 5.004+, but please send bug reports or
+patches to the address below. Recent testing is with newer (5.6.1+)
+versions of Perl so some backporting may be necessary for older Perls.</p>
+<p>Users of ActiveState Perl on Win32 should use build 631 or above as it
+corrects some significant quoting problems, and Argv has been modified
+to assume those fixes.</p>
+<p>
+</p>
+<hr />
+<h1><a name="performance">PERFORMANCE</a></h1>
+<p>If you make frequent use of the <code>clone</code> method, you might consider
+installing the <em>Clone</em> module by Ray Finch. This tends to speed up
+instance cloning a good bit.</p>
+<p>
+</p>
+<hr />
+<h1><a name="bugs">BUGS</a></h1>
+<p>It's not exactly a bug but ... this module served as my laboratory for
+learning about Perl OO, autoloading, and various other advanced Perl
+topics. Therefore it was not written in a disciplined manner; rather, I
+stuck in every neat idea I was playing with at the time. As a result,
+though it works well as far as I know, there's a hopeless array of ways
+to do everything. I know the motto of Perl is TMTOWTDI but Argv goes
+one further: TWTMWTDE (There's Way Too Many Ways To Do Everything).</p>
+<p>For instance, to run commands with different values for execution
+attributes such as <a href="#item_autoquote"><code>autoquote</code></a> or <a href="#item_stderr"><code>stderr</code></a>, you can keep multiple
+instances around with different attribute sets, or you can keep one
+<em>template</em> instance which you clone-and-modify before each execution,
+letting the clone go out of scope in the next line:</p>
+<pre>
+    $obj-&gt;clone-&gt;stderr(0)-&gt;system;</pre>
+<p>Or do you toggle the class attributes while using vanilla instances?  I
+don't know the answer, but choosing a consistent style is a good idea.</p>
+<p>
+</p>
+<hr />
+<h1><a name="author">AUTHOR</a></h1>
+<p>David Boyce &lt;<a href="mailto:dsbperl@cleartool.com">dsbperl@cleartool.com</a>&gt;</p>
+<p>
+</p>
+<hr />
+<h1><a name="copyright">COPYRIGHT</a></h1>
+<p>Copyright (c) 1999-2002 David Boyce. All rights reserved.  This Perl
 program is free software; you may redistribute and/or modify it under
-the same terms as Perl itself.</P>
-<P>
-<HR>
-<H1><A NAME="see also">SEE ALSO</A></H1>
-<P>perl(1), Getopt::Long(3), IPC::ChildSafe(3)</P>
+the same terms as Perl itself.</p>
+<p>
+</p>
+<hr />
+<h1><a name="see_also">SEE ALSO</a></h1>
+<p>perl(1), Getopt::Long(3), IPC::ChildSafe(3)</p>
 
-</BODY>
+</body>
 
-</HTML>
+</html>
