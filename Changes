@@ -90,3 +90,20 @@ Revision history for Perl extension Argv.
 	  method.
 	- Added ->syfail and ->qxfail attributes.
 	- Allow hashref attr specifiers to have a leading '-'.
+
+0.49 Wed Feb  2 14:56:04 EST 2000
+	- Bugfix - qx() was overwriting stderr output with stdout
+	  when both were redirected, in ipc_childsafe mode.
+	- Added an "exception-handling" capability. The autofail
+	  attr can be a code-ref indicating a function to
+	  call on failure, or an array-ref of which the first
+	  element is a code-ref as above and the remainder
+	  constitutes the arguments to pass to said sub.
+	- Allow constructor to be called as ->clone to clone
+	  an existing instance.
+	- Reworked ipc_childsafe to only allow derived classes
+	  access to the coprocess (since the base class cannot
+	  directly support it).
+	- Reworked attropts() to allow prefix_pattern to be specified.
+	- Normalised -dbglevel output somewhat - made normal mode
+	  show returned data at dbglevel >= 2 since ipc mode does so.

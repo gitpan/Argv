@@ -23,16 +23,21 @@ select(STDERR); $| = 1; select(STDOUT); $| = 1;
 
 print "+ Testing basic construction and execution ...\n";
 my $pl = Argv->new($^X, '-v');
+$pl->stdout(0);
 $pl->system;
 $final += printok($? == 0);
 
 print "+ Testing construction using references ...\n";
-$final += printok(Argv->new($^X, [qw(-v)])->system('') == 0);
+$final += printok(Argv->new($^X, [qw(-v)])->stdout(0)->system('') == 0);
 
 print "+ Testing 'noexec' instance-method form ...\n";
-$pl->noexec(1);
-$pl->system;
+$pl->noexec(1)->system;
 $final += printok($? == 0);
+
+print "+ Testing 'autofail' exception-handling ...\n";
+$pl->argv($^X, ['-BADFLAG']);
+$pl->autofail([\&printok, 1]);
+$pl->stderr(0)->system;
 
 print "+ Testing 'glob' method ...\n";
 my $echo = Argv->new(qw(echo *));

@@ -5,7 +5,7 @@ use vars qw($VERSION @ISA @EXPORT_OK);
 use Carp;
 require Exporter;
 @ISA = qw(Exporter);
-$VERSION = '0.48';
+$VERSION = '0.49';
 
 # to support the "FUNCTIONAL INTERFACE"
 @EXPORT_OK = qw(system exec qv MSWIN);
@@ -92,7 +92,7 @@ sub gen_exec_method {
 		    $ret = $class->{$attr};
 		}
 	    }
-	    if (ref($ret) eq 'ARRAY') {
+	    if (ref($ret) eq 'ARRAY' && ref($ret->[0]) ne 'CODE') {
 		my $stack = $ret;
 		$ret = shift @$stack;
 		if (ref $self) {
@@ -134,7 +134,7 @@ __PACKAGE__->gen_exec_method;
     }
 }
 
-# This method is much like the generated exec methods but needs some
+# This method is much like the generated exec methods but has some
 # special-case logic: If called with a param which is true, it starts up
 # a coprocess. If called with false (aka 0) it shuts down the coprocess
 # and destroys the IPC::ChildSafe object. If called with no params at
@@ -146,7 +146,7 @@ sub ipc_childsafe {
     if ($ipc_state) {
 	eval { require IPC::ChildSafe };
 	return undef if $@;
-	IPC::ChildSafe->VERSION(3.09);
+	IPC::ChildSafe->VERSION(3.10);
 	$ipc_obj = IPC::ChildSafe->new(@_);
     }
     if (ref $self) {
@@ -170,39 +170,39 @@ sub ipc_childsafe {
 # Class/instance method. Parses command line for e.g. -/dbg=1. See PODs.
 sub attropts {
     my $self = shift;
-    my $r_argv = ref $_[0] ? shift : undef;
+    my $r_argv = undef;
+    my $prefix = '-/';
+    if (ref $_[0] eq 'HASH') {
+	my $cfg = shift;
+	$r_argv = $cfg->{ARGV};
+	$prefix = $cfg->{PREFIX};
+    }
     require Getopt::Long;
     Getopt::Long->VERSION(2.17); # has 'prefix_pattern'
-    my @configs = qw(pass_through prefix=-/);
+    my @configs = (qw(pass_through), "prefix_pattern=$prefix");
     my @flags = map {"$_=i"} ((map lc, keys %Argv::Argv), @_);
     my %opt;
+    Getopt::Long::Configure(@configs);
     if (ref $self) {
 	if ($r_argv) {
 	    local @ARGV = @$r_argv;
-	    Getopt::Long::Configure(@configs);
 	    Getopt::Long::GetOptions(\%opt, @flags);
-	    Getopt::Long::Configure('default');
 	    @$r_argv = @ARGV;
 	} else {
 	    local @ARGV = $self->args;
 	    if (@ARGV) {
-		Getopt::Long::Configure(@configs);
 		Getopt::Long::GetOptions(\%opt, @flags);
-		Getopt::Long::Configure('default');
 		$self->args(@ARGV);
 	    }
 	}
     } elsif ($r_argv) {
 	local @ARGV = @$r_argv;
-	Getopt::Long::Configure(@configs);
 	Getopt::Long::GetOptions(\%opt, @flags);
-	Getopt::Long::Configure('default');
 	@$r_argv = @ARGV;
     } elsif (@ARGV) {
-	Getopt::Long::Configure(@configs);
 	Getopt::Long::GetOptions(\%opt, @flags);
-	Getopt::Long::Configure('default');
     }
+    Getopt::Long::Configure('default');
     for my $method (keys %opt) { $self->$method($opt{$method}) }
     return $self;
 }
@@ -245,12 +245,24 @@ sub new {
     } else {
 	$class = $proto;
 	$self = {};
-	$self->{PROG} = [];
-	$self->{ARGS} = [];
+	$self->{AV_PROG} = [];
+	$self->{AV_ARGS} = [];
     }
     bless $self, $class;
     $self->optset('');
     $self->argv(@_) if @_;
+    $self->attrs($attrs) if $attrs;
+    return $self;
+}
+*clone = *new;
+
+# Instance methods; most class methods are auto-generated above.
+
+# A shorthand way to set a bunch of attributes by passing a hashref
+# of their names=>values.
+sub attrs {
+    my $self = shift;
+    my $attrs = shift;
     if ($attrs) {
 	for my $key (keys %$attrs) {
 	    (my $method = $key) =~ s/^-//;
@@ -260,14 +272,12 @@ sub new {
     return $self;
 }
 
-# Instance methods; most class methods are auto-generated above.
-
 # Replace the instance's prog(), opt(), and args() vectors all together.
 sub argv {
     my $self = shift;
-    $self->{PROG} = [];
-    $self->{OPTS}{''} = [];
-    $self->{ARGS} = [];
+    $self->{AV_PROG} = [];
+    $self->{AV_OPTS}{''} = [];
+    $self->{AV_ARGS} = [];
     $self->prog(shift) if @_;
     $self->opts(@{shift @_}) if ref $_[0];
     $self->args(@_) if @_;
@@ -280,14 +290,14 @@ sub prog {
     my $self = shift;
     if (@_) {
 	my @prg = ref $_[0] ? @{$_[0]} : @_;
-	@{$self->{PROG}} = @prg;
+	@{$self->{AV_PROG}} = @prg;
     } elsif (!defined(wantarray)) {
-	@{$self->{PROG}} = ();
+	@{$self->{AV_PROG}} = ();
     }
     if (@_) {
 	return $self;
     } else {
-	return wantarray ? @{$self->{PROG}} : ${$self->{PROG}}[0];
+	return wantarray ? @{$self->{AV_PROG}} : ${$self->{AV_PROG}}[0];
     }
 }
 
@@ -296,14 +306,14 @@ sub args {
     my $self = shift;
     if (@_) {
 	my @args = ref $_[0] ? @{$_[0]} : @_;
-	@{$self->{ARGS}} = @args;
+	@{$self->{AV_ARGS}} = @args;
     } elsif (!defined(wantarray)) {
-	@{$self->{ARGS}} = ();
+	@{$self->{AV_ARGS}} = ();
     }
     if (@_) {
 	return $self;
     } else {
-	return @{$self->{ARGS}};
+	return @{$self->{AV_ARGS}};
     }
 }
 
@@ -315,14 +325,14 @@ sub optset {
     my $self = shift;
     for (@_) {
 	my $set = uc $_;
-	$self->{OPTS}{$set} = [];
-	$self->{LINKAGE}{$set} = {};
+	$self->{AV_OPTS}{$set} = [];
+	$self->{AV_LKG}{$set} = {};
 	my($p_meth, $o_meth, $f_meth) = map { $_ . $set } qw(parse opts flag);
-	$self->{DESC}{$set} = [];
+	$self->{AV_DESC}{$set} = [];
 	no strict 'refs'; # needed to muck with symbol table
 	*$p_meth = sub {
 	    my $self = shift;
-	    $self->{DESC}{$set} ||= [];
+	    $self->{AV_DESC}{$set} ||= [];
 	    if (@_) {
 		if (ref($_[0]) eq 'ARRAY') {
 		    $self->{CFG}{$set} = shift;
@@ -330,36 +340,37 @@ sub optset {
 		    $self->warning("do not provide a linkage specifier");
 		    shift;
 		}
-		@{$self->{DESC}{$set}} = @_;
-		$self->factor($set, $self->{DESC}{$set}, $self->{OPTS}{$set},
-					    $self->{ARGS}, $self->{CFG}{$set});
-		if (defined $self->{OPTS}{$set}) {
-		    my @parsedout = @{$self->{OPTS}{$set}};
+		@{$self->{AV_DESC}{$set}} = @_;
+		$self->factor($set,
+				$self->{AV_DESC}{$set}, $self->{AV_OPTS}{$set},
+				$self->{AV_ARGS}, $self->{CFG}{$set});
+		if (defined $self->{AV_OPTS}{$set}) {
+		    my @parsedout = @{$self->{AV_OPTS}{$set}};
 		}
 	    }
-	    return @{$self->{OPTS}{$set}};
+	    return @{$self->{AV_OPTS}{$set}};
 	} unless $Argv::{$p_meth};
 	*$o_meth = sub {
 	    my $self = shift;
-	    $self->{OPTS}{$set} ||= [];
+	    $self->{AV_OPTS}{$set} ||= [];
 	    if (@_ || !defined(wantarray)) {
-		@{$self->{OPTS}{$set}} = @_;
+		@{$self->{AV_OPTS}{$set}} = @_;
 	    }
-	    return @_ ? $self : @{$self->{OPTS}{$set}};
+	    return @_ ? $self : @{$self->{AV_OPTS}{$set}};
 	} unless $Argv::{$o_meth};
 	*$f_meth = sub {
 	    my $self = shift;
 	    if (@_ > 1) {
 		while(my($key, $val) = splice(@_, 0, 2)) {
-		    $self->{LINKAGE}{$set}{$key} = $val;
+		    $self->{AV_LKG}{$set}{$key} = $val;
 		}
 	    } else {
 		my $key = shift;
-		return $self->{LINKAGE}{$set}{$key};
+		return $self->{AV_LKG}{$set}{$key};
 	    }
 	} unless $Argv::{$f_meth};
     }
-    return keys %{$self->{DESC}}; # this is the set of known optsets.
+    return keys %{$self->{AV_DESC}}; # this is the set of known optsets.
 }
 
 # Not generally used except internally; not documented. First arg
@@ -379,7 +390,7 @@ sub factor {
 	push(@configs, 'debug') if $self->dbglevel == 5;
 	local @ARGV = @$r_args;
 	Getopt::Long::Configure(@configs);
-	Getopt::Long::GetOptions($self->{LINKAGE}{$pset}, @$r_desc) if @$r_desc;
+	Getopt::Long::GetOptions($self->{AV_LKG}{$pset}, @$r_desc) if @$r_desc;
 	Getopt::Long::Configure('default');
 	for (0..$#ARGV) { $vgra{$ARGV[$_]} = $_ }
     }
@@ -400,7 +411,7 @@ sub factor {
 sub extract {
     my $self = shift;
     my $set = shift;
-    $self->optset($set) unless defined $self->{LINKAGE}{$set};
+    $self->optset($set) unless defined $self->{AV_LKG}{$set};
     my $p_meth = 'parse' . $set;
     my $o_meth = 'opts' . $set;
     $self->$p_meth(@_);
@@ -414,10 +425,10 @@ sub quote {
     for (@_) {
 	# If requested, change / for \ in Windows file paths.
 	s%/%\\%g if $self->inpathnorm;
+	# Skip arg if already quoted ...
+	next if m%^".*"$%s;
 	# Special case - turn internal newlines back to literal \n on Win32
 	s%\n%\\n%gs if MSWIN;
-	# Skip arg if already quoted ...
-	next if substr($_, 0, 1) eq '"' && substr($_, -1, 1) eq '"';
 	# ... or contains no special chars.
 	next unless m%[^-=:_.\w\\/]% || tr%\n%%;
 	# Special case - leave things that look like redirections alone.
@@ -435,11 +446,12 @@ sub quote {
 # Submits @_ to Perl's glob() function. Usually invoked via autoglob attr.
 sub glob {
     my $self = shift;
-    my(@orig, @globbed) = $self->args;
+    my @orig = @_ ? @_ : $self->args;
     if (! @orig) {
 	$self->warning("no arguments to glob");
 	return 0;
     }
+    my @globbed;
     for (@orig) {
 	if (/^'(.*)'$/) {		# allow '' to escape globbing
 	    push(@globbed, $1);
@@ -449,8 +461,11 @@ sub glob {
 	    push(@globbed, $_)
 	}
     }
-    $self->args(@globbed);
-    return @globbed > @orig;
+    if (defined wantarray) {
+	return @globbed;
+    } else {
+	$self->args(@globbed);
+    }
 }
 
 # Internal. Takes a list of optset names, returns a list of options.
@@ -469,8 +484,8 @@ sub _sets2opts {
 	@sets = @_;
     }
     for my $set (@sets) {
-	next unless $self->{OPTS}{$set} && @{$self->{OPTS}{$set}};
-	push(@opts, @{$self->{OPTS}{$set}});
+	next unless $self->{AV_OPTS}{$set} && @{$self->{AV_OPTS}{$set}};
+	push(@opts, @{$self->{AV_OPTS}{$set}});
     }
     return @opts;
 }
@@ -485,21 +500,42 @@ sub _addstats {
     $Argv::Summary{$prg} = $stats;
 }
 
+sub fail {
+    my($self, $specific) = @_;
+    my $general = $self->autofail;
+    if (my $val = $specific || $general) {
+	if (ref($val) eq 'CODE') {
+	    &$val($self);
+	} elsif (ref($val) eq 'ARRAY') {
+	    my @arr = @$val;
+	    my $func = shift(@arr);
+	    &$func(@arr);
+	} elsif ($val !~ /^\d*$/) {
+	    die $val;
+	} elsif ($val) {
+	    die "\n";
+	}
+    }
+    return $self;
+}
+
 # Wrapper around Perl's exec().
 sub exec {
     return __PACKAGE__->new(@_)->system if !ref($_[0]) || ref($_[0]) eq 'HASH';
     my $self = shift;
-    if ($self->ipc_childsafe) {
+    if ((ref($self) ne __PACKAGE__) && $self->ipc_childsafe) {
 	exit($self->system(@_) | $self->ipc_childsafe->finish);
     } elsif (MSWIN && $self->execwait) {
-	exit $self->system(@_);
+	exit $self->autoquote(1)->system(@_);
     } else {
-	my @cmd = (@{$self->{PROG}}, $self->_sets2opts(@_), @{$self->{ARGS}});
+	my $dbg = $self->dbglevel;
+	my @cmd = (@{$self->{AV_PROG}},
+			    $self->_sets2opts(@_), @{$self->{AV_ARGS}});
 	my($ofd, $efd) = ($self->stdout, $self->stderr);
 	if ($self->noexec) {
 	    print STDERR "- @cmd\n";
 	} else {
-	    $self->_dbg("+ @cmd");
+	    print STDERR "+ @cmd\n" if $dbg;
 	    open(_O, '>&STDOUT');
 	    open(_E, '>&STDERR');
 	    if ($ofd == 2) {
@@ -535,9 +571,10 @@ sub _ipccmd {
     # Hack - there's an "impedance mismatch" between instance
     # methods in this class and the class methods in
     # IPC::ChildSafe, so we toggle the attrs for every cmd.
-    $self->ipc_childsafe->dbglevel($self->dbglevel);
-    $self->ipc_childsafe->noexec($self->noexec);
-    my %results = $self->ipc_childsafe->cmd($cmd);
+    my $childsafe = $self->ipc_childsafe;
+    $childsafe->dbglevel($self->dbglevel);
+    $childsafe->noexec($self->noexec);
+    my %results = $childsafe->cmd($cmd);
     return %results;
 }
 
@@ -545,65 +582,68 @@ sub _ipccmd {
 sub system {
     return __PACKAGE__->new(@_)->system if !ref($_[0]) || ref($_[0]) eq 'HASH';
     my $self = shift;
-    $self->glob if $self->autoglob;
-    my @prog = @{$self->{PROG}};
-    my @opts = $self->_sets2opts(@_);
-    my @args = @{$self->{ARGS}};
-    my @cmd = (@prog, @opts, @args);
-    # Must pass (@prog, @opts, @args) in order for quoting to stick.
-    @cmd = $self->quote(@prog, @opts, @args)
-	if (((MSWIN && @cmd > 1) || $self->ipc_childsafe) && $self->autoquote);
     my $rc = 0;
     my($ofd, $efd) = ($self->stdout, $self->stderr);
-    if ($self->noexec) {
-	print STDERR "- @cmd\n";
+    $self->args($self->glob) if $self->autoglob;
+    my @prog = @{$self->{AV_PROG}};
+    my @opts = $self->_sets2opts(@_);
+    my @args = @{$self->{AV_ARGS}};
+    my @cmd = (@prog, @opts, @args);
+    my $childsafe = $self->ipc_childsafe;
+    # Must pass (@prog, @opts, @args) in order for quoting to stick.
+    @cmd = $self->quote(@prog, @opts, @args)
+	if (((MSWIN && @cmd>1) || ($childsafe && ref($self) ne __PACKAGE__)) &&
+	    $self->autoquote);
+    if ((ref($self) ne __PACKAGE__) && $childsafe) {
+	my %results = $self->_ipccmd(@cmd);
+	$? = $results{status} << 8;
+	if ($ofd == 2) {
+	    print STDERR @{$results{stdout}} if @{$results{stdout}};
+	} else {
+	    warn "Warning: illegal value '$ofd' for stdout" if $ofd > 2;
+	    print STDOUT @{$results{stdout}} if $ofd && @{$results{stdout}};
+	}
+	if ($efd == 1) {
+	    print STDOUT @{$results{stderr}} if @{$results{stderr}};
+	} else {
+	    warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
+	    print STDERR @{$results{stderr}} if $efd && @{$results{stderr}};
+	}
     } else {
-	if ($self->ipc_childsafe) {
-	    my %results = $self->_ipccmd(@cmd);
-	    $? = $results{status} << 8;
-	    if ($ofd == 2) {
-		print STDERR @{$results{stdout}} if @{$results{stdout}};
-	    } else {
-		warn "Warning: illegal value '$ofd' for stdout" if $ofd > 2;
-		print STDOUT @{$results{stdout}} if $ofd && @{$results{stdout}};
-	    }
-	    if ($efd == 1) {
-		print STDOUT @{$results{stderr}} if @{$results{stderr}};
-	    } else {
-		warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
-		print STDERR @{$results{stderr}} if $efd && @{$results{stderr}};
+	my $dbg = $self->dbglevel;
+	if ($self->noexec) {
+	    print STDERR "- @cmd\n";
+	    return 0;
+	}
+	print STDERR "+ @cmd\n" if $dbg;
+	open(_O, '>&STDOUT');
+	open(_E, '>&STDERR');
+	if ($ofd == 2) {
+	    open(STDOUT, '>&STDERR') || warn "Can't dup stdout";
+	} elsif ($ofd != 1) {
+	    close(STDOUT) if !$ofd;
+	    warn "Warning: illegal value '$ofd' for stdout" if $ofd > 2;
+	}
+	if ($efd == 1) {
+	    open(STDERR, '>&STDOUT') || warn "Can't dup stderr";
+	} elsif ($efd != 2) {
+	    close(STDERR) if !$efd;
+	    warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
+	}
+	my $limit = $self->syxargs;
+	if ($limit && @args) {
+	    while (my @chunk = splice(@args, 0, $limit)) {
+		@cmd = (@prog, @opts, @chunk);
+		$rc |= CORE::system @cmd;
 	    }
 	} else {
-	    $self->_dbg("+ @cmd");
-	    open(_O, '>&STDOUT');
-	    open(_E, '>&STDERR');
-	    if ($ofd == 2) {
-		open(STDOUT, '>&STDERR') || warn "Can't dup stdout";
-	    } elsif ($ofd != 1) {
-		close(STDOUT) if !$ofd;
-		warn "Warning: illegal value '$ofd' for stdout" if $ofd > 2;
-	    }
-	    if ($efd == 1) {
-		open(STDERR, '>&STDOUT') || warn "Can't dup stderr";
-	    } elsif ($efd != 2) {
-		close(STDERR) if !$efd;
-		warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
-	    }
-	    my $limit = $self->syxargs;
-	    if ($limit && @args) {
-		while (my @chunk = splice(@args, 0, $limit)) {
-		    @cmd = (@prog, @opts, @chunk);
-		    $rc |= CORE::system @cmd;
-		}
-	    } else {
-		$rc = CORE::system @cmd;
-	    }
-	    open(STDOUT, '>&_O'); close(_O);
-	    open(STDERR, '>&_E'); close(_E);
+	    $rc = CORE::system @cmd;
 	}
-	$self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
+	open(STDOUT, '>&_O'); close(_O);
+	open(STDERR, '>&_E'); close(_E);
     }
-    exit $?>>8 if $? && ($self->syfail || $self->autofail);
+    $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
+    $self->fail($self->syfail) if $?;
     return $rc;
 }
 
@@ -611,50 +651,60 @@ sub system {
 sub qx {
     return __PACKAGE__->new(@_)->qx if !ref($_[0]) || ref($_[0]) eq 'HASH';
     my $self = shift;
-    my @prog = @{$self->{PROG}};
+    my $childsafe = $self->ipc_childsafe;
+    my @prog = @{$self->{AV_PROG}};
     my @opts = $self->_sets2opts(@_);
-    my @args = @{$self->{ARGS}};
+    my @args = @{$self->{AV_ARGS}};
+    @args = $self->glob(@args)
+		if MSWIN && $self->autoglob && $childsafe;
     my @cmd =(@prog, @opts, @args);
     # Must pass (@prog, @opts, @args) in order for quoting to stick.
     @cmd = $self->quote(@prog, @opts, @args)
-	if ((@cmd > 1 || $self->ipc_childsafe) && $self->autoquote);
+	if ((@cmd > 1 || ($childsafe && ref($self) ne __PACKAGE__)) &&
+	    $self->autoquote);
     my @data;
+    my $dbg = 0;
     my($ofd, $efd) = ($self->stdout, $self->stderr);
-    if ($self->ipc_childsafe) {
-	my %results = $self->_ipccmd(@cmd);
-	$? = $results{status} << 8;
-	if ($ofd == 1) {
-	    push(@data, @{$results{stdout}});
+    my $noexec = $self->noexec;
+    if ($childsafe) {
+	if ($noexec) {
+	    print STDERR "- @cmd\n";
 	} else {
-	    print STDERR @{$results{stdout}} if $ofd == 2;
-	    warn "Warning: illegal value '$ofd' for stdout" if $ofd > 2;
+	    my %results = $self->_ipccmd(@cmd);
+	    $? = $results{status} << 8;
+	    if ($ofd == 1) {
+		push(@data, @{$results{stdout}});
+	    } else {
+		print STDERR @{$results{stdout}} if $ofd == 2;
+		warn "Warning: illegal value '$ofd' for stdout" if $ofd > 2;
+	    }
+	    if ($efd == 1) {
+		push(@data, @{$results{stderr}});
+	    } else {
+		print STDERR @{$results{stderr}} if $efd;
+		warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
+	    }
 	}
-	if ($efd == 1) {
-	    push(@data, @{$results{stderr}});
-	} else {
-	    print STDERR @{$results{stderr}} if $efd;
-	    warn "Warning: illegal value '$efd' for stderr" if $efd > 2;
-	}
-	@data = @{$results{stdout}};
     } else {
+	$dbg = $self->dbglevel;
 	my $limit = $self->qxargs;
 	if ($limit && @args) {
 	    while (my @chunk = splice(@args, 0, $limit)) {
 		@cmd = (@prog, @opts, @chunk);
-		if ($self->noexec) {
+		if ($noexec) {
 		    print STDERR "- @cmd\n";
 		} else {
-		    $self->_dbg("+ @cmd");
+		    print STDERR "+ @cmd\n" if $dbg;
 		    $self->_qx_stderr(\@cmd, $efd);
 		    $self->_qx_stdout(\@cmd, $ofd);
 		    push(@data, CORE::qx(@cmd));
 		}
 	    }
 	} else {
-	    if ($self->noexec) {
+	    if ($noexec) {
 		print STDERR "- @cmd\n";
 	    } else {
-		$self->_dbg("+ @cmd");
+		print STDERR "+ @cmd\n" if $dbg;
 		$self->_qx_stderr(\@cmd, $efd);
 		$self->_qx_stdout(\@cmd, $ofd);
 		@data = CORE::qx(@cmd);
@@ -662,7 +712,7 @@ sub qx {
 	}
     }
     $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
-    exit $?>>8 if $? && ($self->qxfail || $self->autofail);
+    $self->fail($self->qxfail) if $?;
     if (MSWIN && $self->outpathnorm) {
 	for (@data) {
 	    chomp(my $chomped = $_);
@@ -670,10 +720,12 @@ sub qx {
 	}
     }
     if (wantarray) {
+	print map {"+ <- $_"} @data if $dbg >= 2;
 	chomp(@data) if $self->autochomp;
 	return @data;
     } else {
 	my $data = join('', @data);
+	print "+ <- $data" if $dbg >= 2;
 	chomp($data) if $self->autochomp;
 	return $data;
     }
@@ -682,14 +734,7 @@ sub qx {
 *qv = *qx;
 
 # Internal - provide a warning with std format and caller's context.
-sub warning { my $self = shift; carp("Warning: ${$self->{PROG}}[-1]: ", @_); }
-
-# Not documented; primarily for internal use.
-sub _dbg {
-    my $self = shift;
-    return unless $self->dbglevel;
-    warn "@_\n" if (caller(1))[3] =~ /system|exec|qx/;
-}
+sub warning { my $self = shift; carp("Warning: ${$self->{AV_PROG}}[-1]: ", @_) }
 
 1;
 
@@ -856,7 +901,10 @@ all of the prog, opt, or arg parts as array refs. E.g.
 Predigested options are placed in the default (anonymous) option set.
 
 The constructor can be used as a class or instance method. In the
-latter case the new object is a copy of its progenitor.
+latter case the new object is a shallow clone of its progenitor.  In
+fact 'clone' is aliased to 'new', allowing clones to be created via:
+
+	my $copy = $orig->clone;
 
 The first argument to C<new()> may be a hash-ref, which will be used to
 set I<execution attributes> at construction time. I.e.:
@@ -1094,15 +1142,25 @@ All data returned by the C<qx> method is chomped first. Unset by default.
 When set, the program will exit immediately if the C<system> or C<qx>
 methods detect a nonzero status. Unset by default.
 
+Autofail may also be given a code-ref, in which case that function will
+be called upon error. This provides a basic "exception-handling" system:
+
+    $obj->autofail(sub { print "caught an exception\n"; exit 17 });
+
+Any failed executions by C<$obj> will call C<handler()>. If the
+reference provided is an array-ref instead, the first element of that
+array is assumed to be a code-ref and the rest of the array is passed
+as args to the function.
+
 =item * syfail,qxfail
 
-Similar to C<autofail> but applies only to C<system()> or C<qx()>
+Similar to C<autofail> but apply only to C<system()> or C<qx()>
 respectively. Unset by default.
 
 =item * autoglob
 
 If set, the C<glob()> function is applied to the operands
-(C<$self->args>) on Windows only. Unset by default.
+(C<$obj->args>) on Windows only. Unset by default.
 
 =item * autoquote
 
@@ -1128,7 +1186,7 @@ meaningless.
 
 =item * execwait
 
-If set, C<$self->exec> on Windows blocks until the new process is
+If set, C<$obj->exec> on Windows blocks until the new process is
 finished for a more consistent UNIX-like behavior than the traditional
 Win32 Perl port. Perl just uses the Windows exec() routine, which runs
 the new process in the background. Set by default.

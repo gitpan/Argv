@@ -201,8 +201,12 @@ Predigested options are placed in the default (anonymous) option set.
 
 <P>
 The constructor can be used as a class or instance method. In the latter
-case the new object is a copy of its progenitor.
+case the new object is a shallow clone of its progenitor. In fact 'clone'
+is aliased to 'new', allowing clones to be created via:
 
+<P>
+<PRE>        my $copy = $orig-&gt;clone;
+</PRE>
 <P>
 The first argument to <CODE>new()</CODE> may be a hash-ref, which will be used to set <EM>execution attributes</EM> at construction time. I.e.:
 
@@ -447,14 +451,26 @@ All data returned by the <CODE>qx</CODE> method is chomped first. Unset by defau
 When set, the program will exit immediately if the <CODE>system</CODE> or <CODE>qx</CODE>
 methods detect a nonzero status. Unset by default.
 
+<P>
+Autofail may also be given a code-ref, in which case that function will be
+called upon error. This provides a basic ``exception-handling'' system:
+
+<P>
+<PRE>    $obj-&gt;autofail(sub { print &quot;caught an exception\n&quot;; exit 17 });
+</PRE>
+<P>
+Any failed executions by <CODE>$obj</CODE> will call <CODE>handler()</CODE>. If the reference provided is an array-ref instead, the first element of
+that array is assumed to be a code-ref and the rest of the array is passed
+as args to the function.
+
 <LI><STRONG><A NAME="item_syfail">syfail,qxfail</A></STRONG>
 <P>
-Similar to <CODE>autofail</CODE> but applies only to <CODE>system()</CODE> or <CODE>qx()</CODE>
+Similar to <CODE>autofail</CODE> but apply only to <CODE>system()</CODE> or <CODE>qx()</CODE>
 respectively. Unset by default.
 
 <LI><STRONG><A NAME="item_autoglob">autoglob</A></STRONG>
 <P>
-If set, the <CODE>glob()</CODE> function is applied to the operands (<CODE>$self-</CODE>args&gt;) on Windows only. Unset by default.
+If set, the <CODE>glob()</CODE> function is applied to the operands (<CODE>$obj-</CODE>args&gt;) on Windows only. Unset by default.
 
 <LI><STRONG><A NAME="item_autoquote">autoquote</A></STRONG>
 <P>
@@ -477,7 +493,7 @@ meaningless.
 
 <LI><STRONG><A NAME="item_execwait">execwait</A></STRONG>
 <P>
-If set, <CODE>$self-</CODE>exec&gt; on Windows blocks until the new process is finished for a more
+If set, <CODE>$obj-</CODE>exec&gt; on Windows blocks until the new process is finished for a more
 consistent UNIX-like behavior than the traditional Win32 Perl port. Perl
 just uses the Windows <CODE>exec()</CODE> routine, which runs the new
 process in the background. Set by default.
