@@ -20,3 +20,16 @@ WriteMakefile(
 	FILES		=> 'Argv.html',
     },
 );
+
+if ($^O =~ /MSWin32|Windows_NT/i) {
+	eval "require Win32::Process::Info";
+	$wpi = $@;
+	eval "require Win32::ToolHelp";
+	$wt = $@;
+	if($wpi && $wt) {
+		print "If you intend to use the ->pipe method, you should consider installing\nany of these modules:\n";
+		print "  Win32::Process::Info\n";
+		print "  Win32::ToolHelp\n";
+		print "See documentation for reasons.\n"
+	}
+}

@@ -4,5 +4,6 @@ Changes
 MANIFEST
 Makefile.PL
 README
-examples/wrapper.pl
+examples/functional
+examples/wrapper
 test.pl

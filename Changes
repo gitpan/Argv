@@ -242,3 +242,20 @@ Revision history for Perl extension Argv.
 	- Fix to autoquoting: on windows globbing is not handled
 	  by the shell so we let '*' go by.
 
+1.15 Tue Mar 29 23:47:15 EST 2005
+	- Show file redirections using \ on Windows.
+	- Removed CORE:: from exec functions: unnecessarily
+	  constrictive for users.
+	- Bugfix: enhanced redirection code was not working right
+	  for ->qx (reported by Andrew Maguire).
+	- Renamed the ->dump method to ->objdump to avoid name
+	  conflicts. I doubt anyone ever used this explicitly
+	  (if I'm wrong, sorry!).
+
+1.16 Tue Oct 24 14:40:00 EDT 2006
+	- Accepted patches contributed by Kenneth Olving implementing
+	  the new ->pipe method and surrounding support code for Win32:
+	-   Ensure cloning code also 'clones' the pipe callback
+	-   Added code in Makefile.PL to tell user about optional modules
+	    useful for the ->pipe method on Win32.
+	-   Updated docs and fixed some typos.

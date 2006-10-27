@@ -1,12 +1,12 @@
 package Argv;
 
-$VERSION = '1.14';
+$VERSION = '1.16';
 @ISA = qw(Exporter);
 
 use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
 
 # To support the "FUNCTIONAL INTERFACE"
-@EXPORT_OK = qw(system exec qv MSWIN);
+@EXPORT_OK = qw(system exec qv pipe MSWIN);
 
 use strict;
 use Carp;
@@ -47,6 +47,7 @@ use vars qw(%Argv);
     STDERR	=> defined($ENV{ARGV_STDERR}) ? $ENV{ARGV_STDERR} : 2,
     SYFAIL	=> $ENV{ARGV_SYFAIL} || 0,
     SYXARGS	=> $ENV{ARGV_SYXARGS} || 0,
+    PIPECB	=> sub { print shift; return 1 },
 );
 
 # Generates execution-attribute methods from the table above. Provided
@@ -136,7 +137,9 @@ $class->gen_exec_method;
 	    my $r_cmd = shift;
 	    my $nfd = shift;
 	    my $fd = $streams{$name};
-	    if ($fd == 0) {
+	    if ($nfd !~ m%^[\d-]*$%) {
+		push(@$r_cmd, "$fd$nfd");
+	    } elsif ($fd == 0) {
 		warn "Error: illegal value '$nfd' for $name" if $nfd > 0;
 		push(@$r_cmd, "<$NUL") if $nfd < 0;
 	    } elsif ($nfd == 0) {
@@ -293,10 +296,13 @@ sub new {
 	    eval $copy;
 	}
 	die $@ if $@ || !$self;
+	# At least some cloners can't clone a code ref...
+	$self->{PIPECB} = $proto->{PIPECB};
     } else {
 	$self = {};
 	$self->{AV_PROG} = [];
 	$self->{AV_ARGS} = [];
+	$self->{PIPECB} = $Argv{PIPECB};
 	bless $self, $proto;
 	$self->optset('');
     }
@@ -344,6 +350,8 @@ sub attrs {
 }
 
 # Replace the instance's prog(), opt(), and args() vectors all together.
+# Without arguments, return the command as it currently looks either as
+# a list or a string depending on context.
 sub argv {
     my $self = shift;
     if (@_) {
@@ -353,11 +361,16 @@ sub argv {
 	$self->{AV_ARGS} = [];
 	$self->prog(shift) if @_;
 	$self->attrs(shift) if ref($_[0]) eq 'HASH';
-	$self->opts(@{shift @_}) if ref $_[0];
+	$self->opts(@{shift @_}) if ref $_[0] eq 'ARRAY';
 	$self->args(@_) if @_;
 	return $self;
     } else {
-	return ($self->prog, $self->opts, $self->args);
+	my @cmd = ($self->prog, $self->opts, $self->args);
+	if (wantarray) {
+	    return @cmd;
+	} else {
+	    return "@cmd";
+	}
     }
 }
 *cmd = \&argv;	# backward compatibility
@@ -382,7 +395,7 @@ sub prog {
 sub args {
     my $self = shift;
     if (@_) {
-	my @args = ref $_[0] ? @{$_[0]} : @_;
+	my @args = ref $_[0] eq 'ARRAY' ? @{$_[0]} : @_;
 	@{$self->{AV_ARGS}} = @args;
     } elsif (!defined(wantarray)) {
 	@{$self->{AV_ARGS}} = ();
@@ -509,28 +522,32 @@ sub argpathnorm {
     my $self = shift;
     my $norm = $self->inpathnorm;
     return unless MSWIN && $norm && !ref($norm);
-    for (@_) {
+    for my $word (@_) {
 	# If requested, change / for \ in Windows file paths.
 	# This is necessarily an inexact science.
-	if (m%^/%) {
-	    if (m%(\w+):(.+)%) {
-		# If it looks like an option specifying a path (/opt:path),
-		# normalize only the path part.
-		my($opt, $path) = ($1, $2);
-		$path =~ s%/%\\%g;
-		$_ = "/$opt:$path";
+	my @fragments = split ' ', $word;
+	for (@fragments) {
+	    if (m%^"?/%) {
+		if (m%(.*/\w+):(.+)%) {
+		    # If it looks like an option specifying a path (/opt:path),
+		    # normalize only the path part.
+		    my($opt, $path) = ($1, $2);
+		    $path =~ s%/%\\%g;
+		    $_ = "$opt:$path";
+		} else {
+		    # If it contains a slash (any kind) after the initial one
+		    # treat it as a full path. This is where you get into
+		    # ambiguity with combined options (e.g. /E/I/Q/S) which
+		    # could technically be a path. So that's just not allowed
+		    # when path-norming.
+		    my $slashes = tr/\/\\//;
+		    s%/%\\%g if $slashes > 1;
+		}
 	    } else {
-		# If it contains a slash (any kind) after the initial one
-		# treat it as a full path. This is where you get into
-		# ambiguity with combined options (e.g. /E/I/Q/S) which
-		# could technically be a path. So that's just not allowed
-		# when path norming.
-		my $slashes = tr/\/\\//;
-		s%/%\\%g if $slashes > 1;
+		s%/%\\%g;
 	    }
-	} else {
-	    s%/%\\%g;
 	}
+	$word = "@fragments";
     }
 }
 
@@ -667,7 +684,7 @@ sub unixpath {
 }
 
 # A no-op except it prints the current state of the object to stderr.
-sub dump {
+sub objdump {
     my $self = shift;
     (my $obj = shift || 'argv') =~ s%^\$%%;
     require Data::Dumper;
@@ -705,15 +722,27 @@ sub _dbg {
     my $self = shift;
     my($level, $prefix, $fh, @txt) = @_;
     my @tmp = @txt;
-    for (@tmp) { $_ = qq("$_") if /\s/ }
-    $self->dump if $level >= 3;
+    for (@tmp) { $_ = qq("$_") if /\s/ && !/^"/ }
+
+    # Print all EV's that were added to or modified from the real env.
+    my $envp = $self->envp;
+    if ($envp) {
+	for (sort keys %$envp) {
+	    next if $ENV{$_} && $ENV{$_} eq $envp->{$_};
+	    print $fh "+ [\$$_=", $envp->{$_}, "]\n";
+	}
+    }
+
+    $self->objdump if $level >= 3;
     my($ifd, $ofd, $efd) = ($self->stdin, $self->stdout, $self->stderr);
     if ($ifd !~ m%^[\d-]*$%) {
+	$ifd =~ s%/%\\%g if MSWIN;
 	push(@tmp, $ifd);
     } elsif ($ifd < 0) {
 	push(@tmp, "<$NUL");
     }
     if ($ofd !~ m%^[\d-]*$%) {
+	$ofd =~ s%/%\\%g if MSWIN;
 	push(@tmp, $ofd);
     } elsif ($ofd <= 0) {
 	push(@tmp, "1>$NUL");
@@ -721,6 +750,7 @@ sub _dbg {
 	push(@tmp, "1>&$ofd");
     }
     if ($efd !~ m%^[\d-]*$%) {
+	$efd =~ s%/%\\%g if MSWIN;
 	push(@tmp, "2$efd");
     } elsif ($efd <= 0) {
 	push(@tmp, "2>$NUL");
@@ -851,9 +881,9 @@ sub exec {
 	    my $rc;
 	    if ($envp) {
 		local %ENV = %$envp;
-		$rc = CORE::exec(@cmd);
+		$rc = exec(@cmd);
 	    } else {
-		$rc = CORE::exec(@cmd);
+		$rc = exec(@cmd);
 	    }
 	    # Shouldn't get here but defensive programming and all that ...
 	    if ($rc) {
@@ -1014,9 +1044,9 @@ sub system {
 		$self->_dbg($dbg, '+', \*_E, @cmd) if $dbg;
 		if ($envp) {
 		    local %ENV = %$envp;
-		    $rc |= CORE::system @cmd;
+		    $rc |= system @cmd;
 		} else {
-		    $rc |= CORE::system @cmd;
+		    $rc |= system @cmd;
 		}
 	    }
 	} else {
@@ -1024,9 +1054,9 @@ sub system {
 	    $self->_dbg($dbg, '+', \*_E, @cmd) if $dbg;
 	    if ($envp) {
 		local %ENV = %$envp;
-		$rc = CORE::system @cmd;
+		$rc = system @cmd;
 	    } else {
-		$rc = CORE::system @cmd;
+		$rc = system @cmd;
 	    }
 	}
 	open(STDIN, '<&_I'); close(_I);
@@ -1118,9 +1148,9 @@ sub qx {
 		    $self->_qx_stdout(\@cmd, $ofd);
 		    if ($envp) {
 			local %ENV = %$envp;
-			push(@data, CORE::qx(@cmd));
+			push(@data, qx(@cmd));
 		    } else {
-			push(@data, CORE::qx(@cmd));
+			push(@data, qx(@cmd));
 		    }
 		    $rc ||= $?;
 		}
@@ -1135,9 +1165,9 @@ sub qx {
 		$self->_qx_stdout(\@cmd, $ofd);
 		if ($envp) {
 		    local %ENV = %$envp;
-		    @data = CORE::qx(@cmd);
+		    @data = qx(@cmd);
 		} else {
-		    @data = CORE::qx(@cmd);
+		    @data = qx(@cmd);
 		}
 		$rc ||= $?;
 	    }
@@ -1163,6 +1193,40 @@ sub qx {
 }
 # Can't override qx() in main package so we export an alias instead.
 *qv = \&qx;
+
+sub pipe {
+    return $class->new(@_)->pipe if !ref($_[0]) || ref($_[0]) eq 'HASH';
+
+    my $self = shift;
+
+    my $cb = $self->pipecb;
+    $self->error("No callback supplied") unless ref($cb) eq 'CODE';
+
+    my ($pipe, $pid) = $self->readpipe(@_);
+    my $line;
+    my $abort = 0;
+    while($line = <$pipe>) {
+	chomp($line) if $self->autochomp;
+	my $keepGoing = &$cb($line);
+	if (!$keepGoing) {
+	    if ($self->_read_only) {
+		$abort = 1;
+		last;
+	    }
+	    $self->warning("Not abortable unless readonly - continuing!");  
+	}
+    }
+    if (MSWIN && $abort)    {
+	# This is somewhat ugly, but due to perl impl details as well as
+	# the fact that Windows does not have the proper counterpart to
+	# SIGPIPE, we'll have to 'help' things along...
+	#
+	Argv::Win32Utils::killProcessTree($self, $pid);
+    }
+    my $rc = close($pipe);
+    $self->fail($self->qxfail) if !$rc;
+    return $rc;
+}
 
 # Wrapper around Perl's "open(FOO, '<cmd> |')" operator.
 sub readpipe {
@@ -1198,9 +1262,9 @@ sub readpipe {
 	} else {
 	    $rc = open($handle, "@cmd |");
 	}
-	$self->fail($self->qxfail) if $rc || !defined($handle);
+	$self->fail($self->qxfail) if !$rc || !defined($handle);
 	my $oldfh = select($handle); $| = 1; select($oldfh);
-	return $handle;
+	return wantarray ? ($handle, $rc) : $handle;
     }
 }
 
@@ -1210,6 +1274,131 @@ sub warning {
     (my $prog = $0) =~ s%.*[/\\]%%;
     no strict 'refs';
     carp('Warning: ', ${$self->{AV_PROG}}[-1] || $prog, ': ', @_);
+}
+
+# Internal - provide a fatal error with std format and caller's context.
+sub error {
+    my $self = shift;
+    (my $prog = $0) =~ s%.*[/\\]%%;
+    no strict 'refs';
+    croak('Error: ', ${$self->{AV_PROG}}[-1] || $prog, ': ', @_);
+}
+
+# Hack this thing in here to help with *&#$ Windows. We want to hide it
+# as much as possible in the hope that a better way may be found
+# someday. Thus it's implemented as an "inner class" rather than
+# a separate file.
+{
+    package Argv::Win32Utils;
+
+    # Preload this to avoid INIT block failure in Win32::API::Type
+    # (but it may not be installed at all, which is ok)
+    eval "require Win32::API";
+
+    # For internal use only - attempt to kill the process tree stemming from
+    # the given pid.
+    # Attempts several ways using various packages that may or may not be
+    # present.
+    sub killProcessTree {
+	my $argv = shift;
+	my $pid = shift;
+
+	# Undocumented way to turn this off in case it causes big problems...
+	return 0 if $ENV{ARGV_WIN32UTILS_SKIP_KILLPROCESSTREE};
+
+	require Win32::Process;
+	
+	my ($implDesc, $impl) = __findImpl($argv);	
+	print STDERR "Using $implDesc...\n" if $argv->dbglevel > 1;
+	&$impl($argv, $pid);
+	
+	return 0;
+    }
+
+    # For internal use only - attempt to kill a single process
+    sub killProcess {
+	my $argv = shift;
+	my $pid = shift;
+
+	print STDERR "Killing $pid...\n" if $argv->dbglevel > 1;
+	return Win32::Process::KillProcess($pid, 0);
+    }
+
+    # Implementation using Win32::Process::Info
+    # This pkg can give us a (pruned) pid tree with the expected
+    # layout right away.
+    sub __win32_process_info {
+	my $argv = shift;
+	my $pid = shift;
+
+	my %pidTree = new Win32::Process::Info->Subprocesses($pid);
+	__deepKill($argv, $pid, \%pidTree);
+	
+	return 0;	
+    }
+
+    # Implementation using Win32::ToolHelp
+    # this pkg gives a different view - rework into a pid tree
+    # by 1) enter all pids as keys, and then 2) add their children.
+    sub __win32_toolhelp {
+	my $argv = shift;
+	my $pid = shift;
+
+	my %pidTree;
+	my @allProcesses = Win32::ToolHelp::GetProcesses();
+	$pidTree{$_->[1]} = [] foreach (@allProcesses);
+	push(@{$pidTree{$_->[5]}}, $_->[1]) foreach (@allProcesses);
+	__deepKill($argv, $pid, \%pidTree);
+
+	return 0;
+    }
+
+    # Kill processes depth first by following the tree
+    # (give parents an opportunity to terminate themselves which is
+    # likely when their child[s] dies)
+    sub __deepKill {
+	my $argv = shift;
+	my $pid = shift;
+	my $pidTree = shift;
+	
+	# give a parent an opportunity to terminate by itself
+	# which is likely when their child died
+	#
+	foreach my $childPid (@{$pidTree->{$pid}}) {
+		__deepKill($argv, $childPid, $pidTree);
+		sleep(1);
+	}
+	killProcess($argv, $pid);
+    }
+
+    # Dynamically find an implementation that can figure out
+    # the process tree and kill it.
+    # Fall back to just kill the root pid (which may just be enough).
+    sub __findImpl {
+	my $argv = shift;
+	
+	# begin with a list to ensure a preferred search order
+	# but put the list in a hash for easy lookup
+	#
+	my @implList = (
+					"Win32::Process::Info", \&__win32_process_info,
+					"Win32::ToolHelp", \&__win32_toolhelp,
+					);
+	my %implHash = @implList;
+	foreach my $implName (@implList) {
+		eval "require $implName";
+		return ("$implName (tree capable)", $implHash{$implName}) unless $@;
+	}
+	
+	# no luck, use fallback
+	#
+	my @helpers = keys(%implHash);
+	$argv->warning("No process tree helper found - install any of these packages: [@helpers]");
+	return ("Win32::Process (not tree capable)", \&killProcess);
+    }
+
+    1;
+
 }
 
 1;
@@ -1236,6 +1425,16 @@ Argv - Provide an OO interface to an arg vector
     $echo->glob;
     my $globbed = $echo->qx;
     print "'echo M*' globs to: $globbed";
+
+    # A demonstration of head-like behavior (aborting early)
+    my $maxLinesToPrint = 5;
+    my $callback = sub {
+	print shift;
+	return !(--$maxLinesToPrint);
+    };
+    my $head = Argv->new('ls', [qw(-l -a)]);
+    $head->readonly("yes"); 
+    $head->pipe($callback); 
 
     # A demonstration of the builtin xargs-like behavior.
     my @files = split(/\s+/, $globbed);
@@ -1304,8 +1503,8 @@ code.
 
 =item * EXTRA FEATURES
 
-The I<execution methods> C<system, exec, and qx> extend their Perl
-builtin analogues in a few ways, for example:
+The I<execution methods> C<system, exec, qx, and pipe> extend their
+Perl builtin analogues in a few ways, for example:
 
 =over
 
@@ -1313,7 +1512,8 @@ builtin analogues in a few ways, for example:
 
 =item 2. UNIX-like C<exec()> behavior on Windows.
 
-=item 3. Automatic quoting of C<system()> on Win32 and C<qx()> everywhere.
+=item 3. Automatic quoting of C<system()> on Win32 and C<qx()>/C<pipe()>
+everywhere.
 
 =item 4. Automatic globbing (primarily for Windows).
 
@@ -1332,7 +1532,7 @@ or instance attributes. See EXECUTION ATTRIBUTES below.
 
 An Argv object treats a command line as 3 separate entities: the
 I<program>, the I<options>, and the I<args>. The I<options> may be
-futher subdivided into user-defined I<option sets> by use of the
+further subdivided into user-defined I<option sets> by use of the
 C<optset> method. When one of the I<execution methods> is called, the
 parts are reassembled into a single list and passed to the underlying
 Perl execution function.
@@ -1369,7 +1569,7 @@ Because the extensions to C<system/exec/qx> described above may be
 helpful in writing portable programs, the methods are also made
 available for export as traditional functions. Thus:
 
-    use Argv qw(system exec qv);
+    use Argv qw(system exec qv pipe);
 
 will override the Perl builtins. There's no way (that I know of) to
 override the operator C<qx()> so an alias C<qv()> is provided.
@@ -1447,12 +1647,17 @@ Allows you to set the prog, opts, and args in one method call. It takes
 the same arguments as the constructor (above); the only difference is
 it operates on a pre-existing object to replace its attributes. I.e.
 
-    my $obj = ClearCase::Argv->new;
+    my $obj = Argv->new;
     $obj->argv('cmd', [qw(-opt1 -opt2)], qw(arg1 arg2));
 
 is equivalent to
 
-    my $obj = ClearCase::Argv->new('cmd', [qw(-opt1 -opt2)], qw(arg1 arg2));
+    my $obj = Argv->new('cmd', [qw(-opt1 -opt2)], qw(arg1 arg2));
+
+Without arguments, returns the current arg vector as it would be
+executed:
+
+    my @cmd = $ct->argv;
 
 =item * optset(<list-of-set-names>);
 
@@ -1515,7 +1720,7 @@ useful on Windows where the invoking shell does not do this for you.
 Automatic use of I<glob> on Windows can be enabled via the I<autoglob>
 method (vide infra).
 
-=item * dump
+=item * objdump
 
 A no-op except for printing the state of the invoking instance to
 stderr. Potentially useful for debugging in situations where access to
@@ -1638,6 +1843,59 @@ Option sets are handled as described in I<system> above.
 
 =back
 
+=item * pipe([<optset-list>])
+
+Provides functionality to use the 'open' process pipe mechanism in
+order to read output line by line and optionally stop reading early.
+This is useful if the process you are reading can be lengthy but where
+you can quickly determine whether you need to let the process finish or
+if you need to save all output.  This can save a lot of time and/or
+memory in many scenarios.
+
+You must pass in a callback code reference using C<-E<gt>pipecb>. This
+callback will receive one line at a time (autochomp is active). The
+callback can do whatever it likes with this line. The callback should
+return a false value to abort early, but for this to be honored, the
+Argv instance should be marked 'readonly' using the C<-E<gt>readonly>
+method. A default callback is in effect at start that merely prints the
+output.
+
+C<-E<gt>pipe> is otherwise similar to, and reuses settings for I<qx>
+(except for the ability to limit command line lengths).
+
+Without exhaustive testing, this is believed to work in a well-behaved
+manner on Unix.
+
+However, on Windows a few caveats apply. These appear to be limitations
+in the underlying implementation of both Perl and Windows.
+
+=over
+
+=item 1. Windows has no concept of SIGPIPE. Thus, just closing the pipe handle
+will not necessarily cause the child process to quit. Bummer :-(.
+
+=item 2. Sometimes an extra process is inserted. For example, if stderr
+has been redirected using $obj->stderr(1) (send stderr to stdout), this
+causes Perl to utilize the shell as an intermediary process, meaning
+that even if the shell process quits, its child will continue.
+
+=back
+
+For the above reasons, in case of an abort request, on Windows we take it
+further and forcibly kill the process tree stemming from the pipe. However,
+to make this kill the full tree, some nonstandard packages are required.
+Currently any of these will work:
+
+=over
+
+=item * Win32::Process::Info
+
+=item * Win32::ToolHelp
+
+Both are available as PPM packages for ActiveState perls, or on CPAN.
+
+=back
+
 =head2 EXECUTION ATTRIBUTES
 
 The behavior of the I<execution methods> C<system, exec, and qx> is
@@ -1707,12 +1965,13 @@ each of which will leave C<$obj> unaffected.
 
 =item * autochomp
 
-All data returned by the C<qx> method is chomped first. Unset by default.
+All data returned by the C<qx> or C<pipe> methods is chomped first.
+Unset by default.
 
 =item * autofail
 
-When set, the program will exit immediately if the C<system> or C<qx>
-methods detect a nonzero status. Unset by default.
+When set, the program will exit immediately if the C<system>, C<qx>, or
+C<pipe> methods detect a nonzero status. Unset by default.
 
 Autofail may also be given a code-ref, in which case that function will
 be called upon error. This provides a basic exception-handling system:
@@ -1743,8 +2002,8 @@ error and execution continues. Switching to a class method example:
 
 =item * syfail,qxfail
 
-Similar to C<autofail> but apply only to C<system()> or C<qx()>
-respectively. Unset by default.
+Similar to C<autofail> but apply only to C<system()> or
+C<qx()>/C<pipe()> respectively. Unset by default.
 
 =item * lastresults
 
@@ -2004,13 +2263,14 @@ For instance, to run commands with different values for execution
 attributes such as C<autoquote> or C<stderr>, you can keep multiple
 instances around with different attribute sets, or you can keep one
 I<template> instance which you clone-and-modify before each execution,
-letting the clone go out of scope in the next line:
+letting the clone go out of scope immediately:
 
     $obj->clone->stderr(0)->system;
 
-Or is it better to toggle the class attributes while using vanilla
-instances?  I don't know the answer, but choosing a consistent style is
-a good idea.
+Or you can keep one instance around and modify its state before each
+use. Or toggle the class attributes while leaving the instance
+attributes untouched. Which is better?  I don't know the answer, but
+choosing a consistent style is a good idea.
 
 =head1 AUTHOR
 

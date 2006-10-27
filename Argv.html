@@ -61,6 +61,16 @@
     my $globbed = $echo-&gt;qx;
     print &quot;'echo M*' globs to: $globbed&quot;;</pre>
 <pre>
+    # A demonstration of head-like behavior (aborting early)
+    my $maxLinesToPrint = 5;
+    my $callback = sub {
+        print shift;
+        return !(--$maxLinesToPrint);
+    };
+    my $head = Argv-&gt;new('ls', [qw(-l -a)]);
+    $head-&gt;readonly(&quot;yes&quot;); 
+    $head-&gt;pipe($callback);</pre>
+<pre>
     # A demonstration of the builtin xargs-like behavior.
     my @files = split(/\s+/, $globbed);
     my $ls = Argv-&gt;new(qw(ls -d -l), @files);
@@ -123,14 +133,15 @@ code.
 <p></p>
 <li><strong><a name="item_extra_features">EXTRA FEATURES</a></strong><br />
 </li>
-The <em>execution methods</em> <code>system, exec, and qx</code> extend their Perl
-builtin analogues in a few ways, for example:
+The <em>execution methods</em> <code>system, exec, qx, and pipe</code> extend their
+Perl builtin analogues in a few ways, for example:
 <ol>
 <li><strong><a name="item_an_xargs%2dlike_capability_without_shell_intervent">An xargs-like capability without shell intervention.</a></strong><br />
 </li>
 <li><strong><a name="item_exec">UNIX-like <code>exec()</code> behavior on Windows.</a></strong><br />
 </li>
-<li><strong><a name="item_system">Automatic quoting of <code>system()</code> on Win32 and <a href="#item_qx"><code>qx()</code></a> everywhere.</a></strong><br />
+<li><strong><a name="item_system">Automatic quoting of <code>system()</code> on Win32 and <a href="#item_qx"><code>qx()</code></a>/<a href="#item_pipe"><code>pipe()</code></a>
+everywhere.</a></strong><br />
 </li>
 <li><strong><a name="item_globbing">Automatic globbing (primarily for Windows).</a></strong><br />
 </li>
@@ -148,7 +159,7 @@ or instance attributes. See EXECUTION ATTRIBUTES below.</p>
 <h1><a name="description">DESCRIPTION</a></h1>
 <p>An Argv object treats a command line as 3 separate entities: the
 <em>program</em>, the <em>options</em>, and the <em>args</em>. The <em>options</em> may be
-futher subdivided into user-defined <em>option sets</em> by use of the
+further subdivided into user-defined <em>option sets</em> by use of the
 <a href="#item_optset"><code>optset</code></a> method. When one of the <em>execution methods</em> is called, the
 parts are reassembled into a single list and passed to the underlying
 Perl execution function.</p>
@@ -182,7 +193,7 @@ to allow any command name to be used as a method. E.g.</p>
 helpful in writing portable programs, the methods are also made
 available for export as traditional functions. Thus:</p>
 <pre>
-    use Argv qw(system exec qv);</pre>
+    use Argv qw(system exec qv pipe);</pre>
 <p>will override the Perl builtins. There's no way (that I know of) to
 override the operator <a href="#item_qx"><code>qx()</code></a> so an alias <code>qv()</code> is provided.</p>
 <p>
@@ -255,11 +266,15 @@ Allows you to set the prog, opts, and args in one method call. It takes
 the same arguments as the constructor (above); the only difference is
 it operates on a pre-existing object to replace its attributes. I.e.
 <pre>
-    my $obj = ClearCase::Argv-&gt;new;
+    my $obj = Argv-&gt;new;
     $obj-&gt;argv('cmd', [qw(-opt1 -opt2)], qw(arg1 arg2));</pre>
 <p>is equivalent to</p>
 <pre>
-    my $obj = ClearCase::Argv-&gt;new('cmd', [qw(-opt1 -opt2)], qw(arg1 arg2));</pre>
+    my $obj = Argv-&gt;new('cmd', [qw(-opt1 -opt2)], qw(arg1 arg2));</pre>
+<p>Without arguments, returns the current arg vector as it would be
+executed:</p>
+<pre>
+    my @cmd = $ct-&gt;argv;</pre>
 <p></p>
 <li><strong><a name="item_optset">optset(&lt;list-of-set-names&gt;);</a></strong><br />
 </li>
@@ -319,7 +334,7 @@ useful on Windows where the invoking shell does not do this for you.
 <p>Automatic use of <em>glob</em> on Windows can be enabled via the <em>autoglob</em>
 method (vide infra).</p>
 <p></p>
-<li><strong><a name="item_dump">dump</a></strong><br />
+<li><strong><a name="item_objdump">objdump</a></strong><br />
 </li>
 A no-op except for printing the state of the invoking instance to
 stderr. Potentially useful for debugging in situations where access to
@@ -422,6 +437,50 @@ latter form.</p>
 against the platform-standard shell <em>on all platforms</em>.</p>
 <p>Option sets are handled as described in <em>system</em> above.</p>
 <p></p></ul>
+<ul>
+<li><strong><a name="item_pipe">pipe([&lt;optset-list&gt;])</a></strong><br />
+</li>
+Provides functionality to use the 'open' process pipe mechanism in
+order to read output line by line and optionally stop reading early.
+This is useful if the process you are reading can be lengthy but where
+you can quickly determine whether you need to let the process finish or
+if you need to save all output.  This can save a lot of time and/or
+memory in many scenarios.
+<p>You must pass in a callback code reference using <code>-&gt;pipecb</code>. This
+callback will receive one line at a time (autochomp is active). The
+callback can do whatever it likes with this line. The callback should
+return a false value to abort early, but for this to be honored, the
+Argv instance should be marked 'readonly' using the <a href="#item_readonly"><code>-&gt;readonly</code></a>
+method. A default callback is in effect at start that merely prints the
+output.</p>
+<p><a href="#item_pipe"><code>-&gt;pipe</code></a> is otherwise similar to, and reuses settings for <em>qx</em>
+(except for the ability to limit command line lengths).</p>
+<p>Without exhaustive testing, this is believed to work in a well-behaved
+manner on Unix.</p>
+<p>However, on Windows a few caveats apply. These appear to be limitations
+in the underlying implementation of both Perl and Windows.</p>
+<ol>
+<li><strong><a name="item_windows_has_no_concept_of_sigpipe%2e_thus%2c_just_">Windows has no concept of SIGPIPE. Thus, just closing the pipe handle
+will not necessarily cause the child process to quit. Bummer :-(.</a></strong><br />
+</li>
+<li><strong><a name="item_stderr">Sometimes an extra process is inserted. For example, if stderr
+has been redirected using $obj-&gt;<code>stderr(1)</code> (send stderr to stdout), this
+causes Perl to utilize the shell as an intermediary process, meaning
+that even if the shell process quits, its child will continue.</a></strong><br />
+</li>
+</ol>
+<p>For the above reasons, in case of an abort request, on Windows we take it
+further and forcibly kill the process tree stemming from the pipe. However,
+to make this kill the full tree, some nonstandard packages are required.
+Currently any of these will work:</p>
+<ul>
+<li><strong><a name="item_win32%3a%3aprocess%3a%3ainfo">Win32::Process::Info</a></strong><br />
+</li>
+<li><strong><a name="item_win32%3a%3atoolhelp">Win32::ToolHelp</a></strong><br />
+</li>
+Both are available as PPM packages for ActiveState perls, or on CPAN.
+<p></p></ul>
+</ul>
 <p>
 </p>
 <h2><a name="execution_attributes">EXECUTION ATTRIBUTES</a></h2>
@@ -484,12 +543,13 @@ and modify that, e.g.:</p>
 <ul>
 <li><strong><a name="item_autochomp">autochomp</a></strong><br />
 </li>
-All data returned by the <a href="#item_qx"><code>qx</code></a> method is chomped first. Unset by default.
+All data returned by the <a href="#item_qx"><code>qx</code></a> or <a href="#item_pipe"><code>pipe</code></a> methods is chomped first.
+Unset by default.
 <p></p>
 <li><strong><a name="item_autofail">autofail</a></strong><br />
 </li>
-When set, the program will exit immediately if the <a href="#item_system"><code>system</code></a> or <a href="#item_qx"><code>qx</code></a>
-methods detect a nonzero status. Unset by default.
+When set, the program will exit immediately if the <a href="#item_system"><code>system</code></a>, <a href="#item_qx"><code>qx</code></a>, or
+<a href="#item_pipe"><code>pipe</code></a> methods detect a nonzero status. Unset by default.
 <p>Autofail may also be given a code-ref, in which case that function will
 be called upon error. This provides a basic exception-handling system:</p>
 <pre>
@@ -516,8 +576,8 @@ error and execution continues. Switching to a class method example:</p>
 <p></p>
 <li><strong><a name="item_syfail%2cqxfail">syfail,qxfail</a></strong><br />
 </li>
-Similar to <a href="#item_autofail"><code>autofail</code></a> but apply only to <a href="#item_system"><code>system()</code></a> or <a href="#item_qx"><code>qx()</code></a>
-respectively. Unset by default.
+Similar to <a href="#item_autofail"><code>autofail</code></a> but apply only to <a href="#item_system"><code>system()</code></a> or
+<a href="#item_qx"><code>qx()</code></a>/<a href="#item_pipe"><code>pipe()</code></a> respectively. Unset by default.
 <p></p>
 <li><strong><a name="item_lastresults">lastresults</a></strong><br />
 </li>
@@ -674,7 +734,7 @@ in <code>/tmp/foo</code> use:</p>
 <p>Note that in this usage, responsibility for portable constructs such as
 the existence of <em>/tmp</em> belongs to the programmer.</p>
 <p></p>
-<li><strong><a name="item_stderr">stderr</a></strong><br />
+<li><strong>stderr</strong><br />
 </li>
 As above, for STDERR. A value of 1 is the equivalent of <code>2&gt;&amp;1</code>,
 meaning that it sends stderr to the stdout device. E.g.:
@@ -758,12 +818,13 @@ one further: TWTMWTDE (There's Way Too Many Ways To Do Everything).</p>
 attributes such as <a href="#item_autoquote"><code>autoquote</code></a> or <a href="#item_stderr"><code>stderr</code></a>, you can keep multiple
 instances around with different attribute sets, or you can keep one
 <em>template</em> instance which you clone-and-modify before each execution,
-letting the clone go out of scope in the next line:</p>
+letting the clone go out of scope immediately:</p>
 <pre>
     $obj-&gt;clone-&gt;stderr(0)-&gt;system;</pre>
-<p>Or is it better to toggle the class attributes while using vanilla
-instances?  I don't know the answer, but choosing a consistent style is
-a good idea.</p>
+<p>Or you can keep one instance around and modify its state before each
+use. Or toggle the class attributes while leaving the instance
+attributes untouched. Which is better?  I don't know the answer, but
+choosing a consistent style is a good idea.</p>
 <p>
 </p>
 <hr />
