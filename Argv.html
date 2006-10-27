@@ -27,11 +27,13 @@
 		<li><a href="#execution_attributes">EXECUTION ATTRIBUTES</a></li>
 	</ul>
 
-	<li><a href="#porting">PORTING</a></li>
+	<li><a href="#portability">PORTABILITY</a></li>
+	<li><a href="#portability">PORTABILITY</a></li>
 	<li><a href="#performance">PERFORMANCE</a></li>
 	<li><a href="#bugs">BUGS</a></li>
 	<li><a href="#author">AUTHOR</a></li>
 	<li><a href="#copyright">COPYRIGHT</a></li>
+	<li><a href="#guarantee">GUARANTEE</a></li>
 	<li><a href="#see_also">SEE ALSO</a></li>
 </ul>
 <!-- INDEX END -->
@@ -114,10 +116,10 @@ add over Perl's native way of doing the same thing:</p>
 <li><strong><a name="item_structure">STRUCTURE</a></strong><br />
 </li>
 First, Argv recognizes the underlying property of an arg vector, which
-is that it typically begins with a program name potentially followed by
-options and then operands. An Argv object factors a raw argv into these
-three groups, provides accessor methods to allow operations on each
-group independently, and can then paste them back together for
+is that it begins with a N&lt;program name&gt; potentially followed by
+<strong>options</strong> and then <strong>operands</strong>. An Argv object factors a raw argv into
+these three groups, provides accessor methods to allow operations on
+each group independently, and can then paste them back together for
 execution.
 <p></p>
 <li><strong><a name="item_option_sets">OPTION SETS</a></strong><br />
@@ -128,7 +130,7 @@ the case of wrapper programs which may, for instance, need to parse out
 one set of flags to direct the behavior of the wrapper itself, extract
 a different set and pass them to program X, another for program Y, then
 exec program Z with the remainder.  Doing this kind of thing on a basic
-@ARGV using indexing and splicing is doable but leads to spaghetti-ish
+@ARGV using indexing and splicing is do-able but leads to spaghetti-ish
 code.
 <p></p>
 <li><strong><a name="item_extra_features">EXTRA FEATURES</a></strong><br />
@@ -325,7 +327,7 @@ a shell on all platforms.
 <p>The automatic use of <em>quote</em> can be turned off via the <em>autoquote</em>
 method (see).</p>
 <p>IMPORTANT: this method quotes its argument list <strong>in place</strong>. In other
-words, it may modify its arguments.</p>
+words, it may modify the arguments.</p>
 <p></p>
 <li><strong><a name="item_glob">glob</a></strong><br />
 </li>
@@ -358,7 +360,8 @@ would be skipped too. But, if you take care to use objects with the
 defining a special read-only object:</p>
 <pre>
         my $ro = Argv-&gt;new;
-        $ro-&gt;readonly('yes');</pre>
+        $ro-&gt;readonly('yes');
+        $ro-&gt;ls('/tmp')-&gt;system;</pre>
 <p>then the <code>-n</code> flag will cause only write operations to be skipped.</p>
 <p>Note that, if you choose to use this feature at all, determining which
 operations are readonly is entirely the programmer's responsibility.
@@ -786,16 +789,17 @@ set of -/ flags. As an instance method:</p>
 <p>
 </p>
 <hr />
-<h1><a name="porting">PORTING</a></h1>
-<p>This module is known to work on Solaris 2.5.1-8 and Windows NT4 and
-2000, using perl 5.004_04 and 5.6.1.  As these platforms are quite
-different, there should be no <em>major</em> problems using it on other
-platforms or perl versions 5.004+, but please send bug reports or
-patches to the address below. Recent testing is with newer (5.6.1+)
-versions of Perl so some backporting may be necessary for older Perls.</p>
-<p>Users of ActiveState Perl on Win32 should use build 631 or above as it
-corrects some significant quoting problems, and Argv has been modified
-to assume those fixes.</p>
+<h1><a name="portability">PORTABILITY</a></h1>
+<p>ClearCase::Argv should work on all ClearCase platforms. It's primarily
+maintained on Solaris 9 and Windows XP with CC 7.0, using Perl5.8.x.</p>
+<p>
+</p>
+<hr />
+<h1><a name="portability">PORTABILITY</a></h1>
+<p>This module is primarily maintained on Solaris 9 and Windows XP using
+Perl 5.8.x or newer.  There is no known reason it should fail to work
+on any POSIX or Windows (NT4.0 and above) platform with a sufficiently
+modern Perl.</p>
 <p>
 </p>
 <hr />
@@ -834,9 +838,14 @@ choosing a consistent style is a good idea.</p>
 </p>
 <hr />
 <h1><a name="copyright">COPYRIGHT</a></h1>
-<p>Copyright (c) 1999-2002 David Boyce. All rights reserved.  This Perl
+<p>Copyright (c) 1999-2006 David Boyce. All rights reserved.  This Perl
 program is free software; you may redistribute and/or modify it under
 the same terms as Perl itself.</p>
+<p>
+</p>
+<hr />
+<h1><a name="guarantee">GUARANTEE</a></h1>
+<p>Double your money back!</p>
 <p>
 </p>
 <hr />

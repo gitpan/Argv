@@ -259,3 +259,6 @@ Revision history for Perl extension Argv.
 	-   Added code in Makefile.PL to tell user about optional modules
 	    useful for the ->pipe method on Win32.
 	-   Updated docs and fixed some typos.
+
+1.17 Fri Oct 27 10:29:33 EDT 2006
+	- Minor documentation tweaks.

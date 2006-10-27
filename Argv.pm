@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.16';
+$VERSION = '1.17';
 @ISA = qw(Exporter);
 
 use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
@@ -1483,10 +1483,10 @@ The answer comes in a few parts:
 =item * STRUCTURE
 
 First, Argv recognizes the underlying property of an arg vector, which
-is that it typically begins with a program name potentially followed by
-options and then operands. An Argv object factors a raw argv into these
-three groups, provides accessor methods to allow operations on each
-group independently, and can then paste them back together for
+is that it begins with a N<program name> potentially followed by
+B<options> and then B<operands>. An Argv object factors a raw argv into
+these three groups, provides accessor methods to allow operations on
+each group independently, and can then paste them back together for
 execution.
 
 
@@ -1498,7 +1498,7 @@ the case of wrapper programs which may, for instance, need to parse out
 one set of flags to direct the behavior of the wrapper itself, extract
 a different set and pass them to program X, another for program Y, then
 exec program Z with the remainder.  Doing this kind of thing on a basic
-@ARGV using indexing and splicing is doable but leads to spaghetti-ish
+@ARGV using indexing and splicing is do-able but leads to spaghetti-ish
 code.
 
 =item * EXTRA FEATURES
@@ -1710,7 +1710,7 @@ The automatic use of I<quote> can be turned off via the I<autoquote>
 method (see).
 
 IMPORTANT: this method quotes its argument list B<in place>. In other
-words, it may modify its arguments.
+words, it may modify the arguments.
 
 =item * glob
 
@@ -1746,6 +1746,7 @@ defining a special read-only object:
 
 	my $ro = Argv->new;
 	$ro->readonly('yes');
+	$ro->ls('/tmp')->system;
 
 then the C<-n> flag will cause only write operations to be skipped.
 
@@ -2230,18 +2231,17 @@ for every instance of C<-/foo=1> found there.
 
 =back
 
-=head1 PORTING
+=head1 PORTABILITY
 
-This module is known to work on Solaris 2.5.1-8 and Windows NT4 and
-2000, using perl 5.004_04 and 5.6.1.  As these platforms are quite
-different, there should be no I<major> problems using it on other
-platforms or perl versions 5.004+, but please send bug reports or
-patches to the address below. Recent testing is with newer (5.6.1+)
-versions of Perl so some backporting may be necessary for older Perls.
+ClearCase::Argv should work on all ClearCase platforms. It's primarily
+maintained on Solaris 9 and Windows XP with CC 7.0, using Perl5.8.x.
 
-Users of ActiveState Perl on Win32 should use build 631 or above as it
-corrects some significant quoting problems, and Argv has been modified
-to assume those fixes.
+=head1 PORTABILITY
+
+This module is primarily maintained on Solaris 9 and Windows XP using
+Perl 5.8.x or newer.  There is no known reason it should fail to work
+on any POSIX or Windows (NT4.0 and above) platform with a sufficiently
+modern Perl.
 
 =head1 PERFORMANCE
 
@@ -2278,9 +2278,13 @@ David Boyce <dsbperl AT boyski.com>
 
 =head1 COPYRIGHT
 
-Copyright (c) 1999-2002 David Boyce. All rights reserved.  This Perl
+Copyright (c) 1999-2006 David Boyce. All rights reserved.  This Perl
 program is free software; you may redistribute and/or modify it under
 the same terms as Perl itself.
+
+=head1 GUARANTEE
+
+Double your money back!
 
 =head1 SEE ALSO
 
