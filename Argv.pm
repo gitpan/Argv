@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.18';
+$VERSION = '1.19';
 @ISA = qw(Exporter);
 
 use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
