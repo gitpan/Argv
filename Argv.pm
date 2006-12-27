@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.17';
+$VERSION = '1.18';
 @ISA = qw(Exporter);
 
 use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
@@ -1483,7 +1483,7 @@ The answer comes in a few parts:
 =item * STRUCTURE
 
 First, Argv recognizes the underlying property of an arg vector, which
-is that it begins with a N<program name> potentially followed by
+is that it begins with a B<program name> potentially followed by
 B<options> and then B<operands>. An Argv object factors a raw argv into
 these three groups, provides accessor methods to allow operations on
 each group independently, and can then paste them back together for
