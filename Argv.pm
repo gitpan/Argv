@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.19';
+$VERSION = '1.21';
 @ISA = qw(Exporter);
 
 use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
@@ -1292,7 +1292,7 @@ sub error {
     package Argv::Win32Utils;
 
     # Preload this to avoid INIT block failure in Win32::API::Type
-    # (but it may not be installed at all, which is ok)
+    # (but it may not be installed at all, which is ok).
     eval "require Win32::API";
 
     # For internal use only - attempt to kill the process tree stemming from
@@ -1353,9 +1353,7 @@ sub error {
 	return 0;
     }
 
-    # Kill processes depth first by following the tree
-    # (give parents an opportunity to terminate themselves which is
-    # likely when their child[s] dies)
+    # Kill processes depth first by following the tree.
     sub __deepKill {
 	my $argv = shift;
 	my $pid = shift;
@@ -1365,8 +1363,7 @@ sub error {
 	# which is likely when their child died
 	#
 	foreach my $childPid (@{$pidTree->{$pid}}) {
-		__deepKill($argv, $childPid, $pidTree);
-		sleep(1);
+	    __deepKill($argv, $childPid, $pidTree);
 	}
 	killProcess($argv, $pid);
     }
@@ -1381,24 +1378,22 @@ sub error {
 	# but put the list in a hash for easy lookup
 	#
 	my @implList = (
-					"Win32::Process::Info", \&__win32_process_info,
-					"Win32::ToolHelp", \&__win32_toolhelp,
-					);
+	    "Win32::ToolHelp", \&__win32_toolhelp,
+	    "Win32::Process::Info", \&__win32_process_info,
+	);
 	my %implHash = @implList;
 	foreach my $implName (@implList) {
-		eval "require $implName";
-		return ("$implName (tree capable)", $implHash{$implName}) unless $@;
+	    eval "use $implName";
+	    return ("$implName (tree capable)", $implHash{$implName}) unless $@;
 	}
 	
 	# no luck, use fallback
-	#
 	my @helpers = keys(%implHash);
 	$argv->warning("No process tree helper found - install any of these packages: [@helpers]");
 	return ("Win32::Process (not tree capable)", \&killProcess);
     }
 
     1;
-
 }
 
 1;
@@ -1426,15 +1421,16 @@ Argv - Provide an OO interface to an arg vector
     my $globbed = $echo->qx;
     print "'echo M*' globs to: $globbed";
 
-    # A demonstration of head-like behavior (aborting early)
+    # A demonstration of head-like behavior (aborting early).
     my $maxLinesToPrint = 5;
     my $callback = sub {
 	print shift;
-	return !(--$maxLinesToPrint);
+	return --$maxLinesToPrint;
     };
     my $head = Argv->new('ls', [qw(-l -a)]);
     $head->readonly("yes"); 
-    $head->pipe($callback); 
+    $head->pipecb($callback); 
+    $head->pipe;
 
     # A demonstration of the builtin xargs-like behavior.
     my @files = split(/\s+/, $globbed);
@@ -1495,7 +1491,7 @@ execution.
 Second, Argv encapsulates and extends C<Getopt::Long> to allow parsing
 of the argv's options into different I<option sets>. This is useful in
 the case of wrapper programs which may, for instance, need to parse out
-one set of flags to direct the behavior of the wrapper itself, extract
+one set of flags which direct the behavior of the wrapper itself, extract
 a different set and pass them to program X, another for program Y, then
 exec program Z with the remainder.  Doing this kind of thing on a basic
 @ARGV using indexing and splicing is do-able but leads to spaghetti-ish
@@ -1842,8 +1838,6 @@ against the platform-standard shell I<on all platforms>.
 
 Option sets are handled as described in I<system> above.
 
-=back
-
 =item * pipe([<optset-list>])
 
 Provides functionality to use the 'open' process pipe mechanism in
@@ -1886,6 +1880,8 @@ For the above reasons, in case of an abort request, on Windows we take it
 further and forcibly kill the process tree stemming from the pipe. However,
 to make this kill the full tree, some nonstandard packages are required.
 Currently any of these will work:
+
+=back
 
 =over
 

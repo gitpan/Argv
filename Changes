@@ -268,3 +268,11 @@ Revision history for Perl extension Argv.
 
 1.19 Wed Dec 27 11:25:31 EST 2006
 	- No change - dealing with CPAN versioning mistake.
+
+1.20 Tue Apr 24 08:55:06 EDT 2007
+	- Unreleased.
+	- Minor bugfix from Kenneth Olving for ->pipe method on Win32.
+	- Fix POD formatting bug.
+
+1.21 Thu Jul 26 07:12:03 EDT 2007
+	- A little more POD work.

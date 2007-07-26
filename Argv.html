@@ -63,15 +63,16 @@
     my $globbed = $echo-&gt;qx;
     print &quot;'echo M*' globs to: $globbed&quot;;</pre>
 <pre>
-    # A demonstration of head-like behavior (aborting early)
+    # A demonstration of head-like behavior (aborting early).
     my $maxLinesToPrint = 5;
     my $callback = sub {
         print shift;
-        return !(--$maxLinesToPrint);
+        return --$maxLinesToPrint;
     };
     my $head = Argv-&gt;new('ls', [qw(-l -a)]);
     $head-&gt;readonly(&quot;yes&quot;); 
-    $head-&gt;pipe($callback);</pre>
+    $head-&gt;pipecb($callback); 
+    $head-&gt;pipe;</pre>
 <pre>
     # A demonstration of the builtin xargs-like behavior.
     my @files = split(/\s+/, $globbed);
@@ -127,7 +128,7 @@ execution.
 Second, Argv encapsulates and extends <code>Getopt::Long</code> to allow parsing
 of the argv's options into different <em>option sets</em>. This is useful in
 the case of wrapper programs which may, for instance, need to parse out
-one set of flags to direct the behavior of the wrapper itself, extract
+one set of flags which direct the behavior of the wrapper itself, extract
 a different set and pass them to program X, another for program Y, then
 exec program Z with the remainder.  Doing this kind of thing on a basic
 @ARGV using indexing and splicing is do-able but leads to spaghetti-ish
@@ -439,8 +440,7 @@ latter form.</p>
 <p>Also, if <em>autoquote</em> is set the arguments are escaped to protect them
 against the platform-standard shell <em>on all platforms</em>.</p>
 <p>Option sets are handled as described in <em>system</em> above.</p>
-<p></p></ul>
-<ul>
+<p></p>
 <li><strong><a name="item_pipe">pipe([&lt;optset-list&gt;])</a></strong><br />
 </li>
 Provides functionality to use the 'open' process pipe mechanism in
@@ -476,6 +476,7 @@ that even if the shell process quits, its child will continue.</a></strong><br /
 further and forcibly kill the process tree stemming from the pipe. However,
 to make this kill the full tree, some nonstandard packages are required.
 Currently any of these will work:</p>
+</ul>
 <ul>
 <li><strong><a name="item_win32%3a%3aprocess%3a%3ainfo">Win32::Process::Info</a></strong><br />
 </li>
@@ -483,7 +484,6 @@ Currently any of these will work:</p>
 </li>
 Both are available as PPM packages for ActiveState perls, or on CPAN.
 <p></p></ul>
-</ul>
 <p>
 </p>
 <h2><a name="execution_attributes">EXECUTION ATTRIBUTES</a></h2>
