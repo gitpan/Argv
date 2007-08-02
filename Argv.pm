@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.21';
+$VERSION = '1.22';
 @ISA = qw(Exporter);
 
 use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
@@ -230,7 +230,9 @@ sub attropts {
     } elsif (@ARGV) {
 	GetOptions(\%opt, @flags);
     }
-    for my $method (keys %opt) { $self->$method($opt{$method}) }
+    for my $method (keys %opt) {
+	$self->$method($opt{$method});
+    }
     return $self;
 }
 *stdopts = \&attropts;	# backward compatibility
@@ -300,6 +302,13 @@ sub new {
 	$self->{PIPECB} = $proto->{PIPECB};
     } else {
 	$self = {};
+	if ($proto ne __PACKAGE__) {
+	    # Inherit class attributes from subclass class attributes.
+	    no strict 'refs';
+	    for (keys %$proto) {
+		$self->{$_} = $proto->{$_};
+	    }
+	}
 	$self->{AV_PROG} = [];
 	$self->{AV_ARGS} = [];
 	$self->{PIPECB} = $Argv{PIPECB};

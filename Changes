@@ -276,3 +276,7 @@ Revision history for Perl extension Argv.
 
 1.21 Thu Jul 26 07:12:03 EDT 2007
 	- A little more POD work.
+
+1.22 Thu Aug  2 16:02:34 EDT 2007
+	- Feature: "Inherit class attributes from subclass class attributes"
+	  added to support new work in ClearCase::Argv.
