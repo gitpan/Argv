@@ -3,6 +3,7 @@ Argv.pm
 Changes
 MANIFEST
 Makefile.PL
+META.yml
 README
 examples/functional
 examples/wrapper
