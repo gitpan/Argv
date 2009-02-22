@@ -284,3 +284,6 @@ Revision history for Perl extension Argv.
 1.23 Fri Sep  5 10:21:25 BST 2008
 	- Fix for ClearCase::Argv in fork mode: let double-quotes pass through
 	  in unix (revert part of change in 1.09)
+
+1.24 Sat Feb 21 19:54:58 EST 2009
+	- Fixed an uninitialized-value warning.

@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.23';
+$VERSION = '1.24';
 @ISA = qw(Exporter);
 
 use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
@@ -810,7 +810,9 @@ sub _env_size {
     my $envlen = 0;
     my $ptrsize = $Config::Config{ptrsize};
     for my $ev (keys %ENV) {
-	$envlen += length($ev) + length($ENV{$ev}) + 2 + $ptrsize;
+	$envlen += length($ev);
+	$envlen += length($ENV{$ev}) if $ENV{$ev};
+	$envlen += 2 + $ptrsize;
     }
     # Need one more pointer's worth for the terminating NULL in 'environ'.
     return $envlen + $ptrsize;
