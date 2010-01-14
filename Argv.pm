@@ -1,12 +1,13 @@
 package Argv;
 
-$VERSION = '1.24';
+$VERSION = '1.25';
 @ISA = qw(Exporter);
 
 use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
+use constant CYGWIN	=> $^O =~ /cygwin/i ? 1 : 0;
 
 # To support the "FUNCTIONAL INTERFACE"
-@EXPORT_OK = qw(system exec qv pipe MSWIN);
+@EXPORT_OK = qw(system exec qv pipe MSWIN CYGWIN);
 
 use strict;
 use Carp;
@@ -574,6 +575,7 @@ sub quote {
 	    $_ = qq(\\"$1\\") if MSWIN;
 	    next;
 	} elsif (m%^".*"$%s) {
+	    $_ = qq(\\"$_\\") if MSWIN || CYGWIN;
 	    next;
 	}
 	# Skip if contains no special chars.
@@ -582,7 +584,7 @@ sub quote {
 	    # let '*' go by.
 	    next unless m%[^-=:_."\w\\/*]% || tr%\n%%;
 	} else {
-	    next unless m%[^-=:_."\w\\/]% || tr%\n%%;
+	    next unless m%[^-=:_."\w\\/]% || m%\\n% || tr%\n%%;
 	}
 	# Special case - leave things that look like redirections alone.
 	next if /^\d?(?:<{1,2})|(?:>{1,2})/;
