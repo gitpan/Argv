@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.25';
+$VERSION = '1.26';
 @ISA = qw(Exporter);
 
 use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
@@ -483,33 +483,33 @@ sub optset {
 sub factor {
     my $self = shift;
     my($pset, $r_desc, $r_opts, $r_args, $r_cfg) = @_;
-    my %vgra;
+    my @vgra;
     {
-	local @ARGV = @$r_args;
-	if ($r_desc && @$r_desc) {
-	    require Getopt::Long;
-	    # Need this version so Configure() returns prev state.
-	    Getopt::Long->VERSION(2.23);
-	    if ($r_cfg && @$r_cfg) {
-		my $prev = Getopt::Long::Configure(@$r_cfg);
-		GetOptions($self->{AV_LKG}{$pset}, @$r_desc);
-		Getopt::Long::Configure($prev);
-	    } else {
-		local $Getopt::Long::passthrough = 1;
-		local $Getopt::Long::autoabbrev = 1;
-		local $Getopt::Long::debug = 1 if $self->dbglevel == 5;
-		GetOptions($self->{AV_LKG}{$pset}, @$r_desc);
-	    }
-	}
-	for (0..$#ARGV) { $vgra{$ARGV[$_]} = $_ }
+        local @ARGV = @$r_args;
+        if ($r_desc && @$r_desc) {
+            require Getopt::Long;
+            # Need this version so Configure() returns prev state.
+            Getopt::Long->VERSION(2.23);
+            if ($r_cfg && @$r_cfg) {
+                my $prev = Getopt::Long::Configure(@$r_cfg);
+                GetOptions($self->{AV_LKG}{$pset}, @$r_desc);
+                Getopt::Long::Configure($prev);
+            } else {
+                local $Getopt::Long::passthrough = 1;
+                local $Getopt::Long::autoabbrev = 1;
+                local $Getopt::Long::debug = 1 if $self->dbglevel == 5;
+                GetOptions($self->{AV_LKG}{$pset}, @$r_desc);
+            }
+        }
+        @vgra = @ARGV;
     }
     my(@opts, @args);
-    for (@$r_args) {
-	if (defined $vgra{$_}) {
-	    push(@args, $_);
-	} else {
-	    push(@opts, $_);
-	}
+    for (reverse @$r_args) {
+        if (@vgra && $vgra[$#vgra] eq $_) {
+            unshift(@args, pop (@vgra));
+        } else {
+            unshift(@opts, $_);
+        }
     }
     @$r_opts = @opts if $r_opts;
     @$r_args = @args;
@@ -531,7 +531,11 @@ sub extract {
 sub argpathnorm {
     my $self = shift;
     my $norm = $self->inpathnorm;
-    return unless MSWIN && $norm && !ref($norm);
+    return unless $norm && !ref($norm);
+    if (CYGWIN) { #for the cygwin shell
+        s%\\%\\\\%g for @_;
+    }
+    return unless MSWIN;
     for my $word (@_) {
 	# If requested, change / for \ in Windows file paths.
 	# This is necessarily an inexact science.
@@ -564,7 +568,7 @@ sub argpathnorm {
 # Quotes @_ in place against shell expansion. Usually called via autoquote attr
 sub quote {
     my $self = shift;
-    for (@_) {
+    for (grep {defined} @_) {
 	# Hack - allow user to exempt any arg from quoting by prefixing '^'.
 	next if s%^\^%%;
 	# Special case - turn internal newlines back to literal \n on Win32
@@ -829,7 +833,7 @@ sub _chunk_by_length {
     my @chunk = ();
     my $chunklen = 0;
     my $extra = $Config::Config{ptrsize} + 1;
-    while (@{$args}) {
+    while (grep {defined} @{$args}) {
 	# Reached max length?
 	if (($chunklen + length(${$args}[0]) + $extra) >= $max) {
 	    # Always send at least one chunk no matter what.
@@ -842,7 +846,7 @@ sub _chunk_by_length {
     }
     #printf STDERR "CHUNK: $chunklen (MAX=$max, LEFT=%d)\n", scalar(@{$args});
     return @chunk;
-}  
+}
 
 # Wrapper around Perl's exec().
 sub exec {

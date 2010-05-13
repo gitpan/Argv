@@ -289,6 +289,11 @@ Revision history for Perl extension Argv.
 	- Fixed an uninitialized-value warning.
 
 1.25 Sat Jan  9 22:01:29 GMTST 2010
-     	- Fix contributed by Ken Ã–lwing to a regression introduced in 1.23 for the
+     	- Fix contributed by Ken Ölwing to a regression introduced in 1.23 for the
 	  Windows case: double-quotes must be quoted.
 	- Minimal support for Cygwin.
+
+1.26 Mon Mar  8 06:11:24 GMTST 2010
+        - Protection against undef errors in command.
+	- Escape backslashes under cygwin
+	- Fix contributed by Stephen Rauch: handling same name as opt and arg
