@@ -1,9 +1,9 @@
 package Argv;
 
-$VERSION = '1.26';
+$VERSION = '1.27';
 @ISA = qw(Exporter);
 
-use constant MSWIN => $^O =~ /MSWin32|Windows_NT/i ? 1 : 0;
+use constant MSWIN => $^O =~ /MSWin|Windows_NT/i ? 1 : 0;
 use constant CYGWIN	=> $^O =~ /cygwin/i ? 1 : 0;
 
 # To support the "FUNCTIONAL INTERFACE"
@@ -848,7 +848,8 @@ sub _chunk_by_length {
     return @chunk;
 }
 
-# Wrapper around Perl's exec().
+# Wrapper around Perl's exec(). Strawberry Perl 5.12 warns...
+{ no warnings 'redefine';
 sub exec {
     $class->new(@_)->exec if !ref($_[0]) || ref($_[0]) eq 'HASH';
     my $self = shift;
@@ -911,7 +912,7 @@ sub exec {
 	    }
 	}
     }
-}
+}}
 
 sub lastresults {
     my $self = shift;
@@ -970,7 +971,7 @@ sub system {
     my @cmd = (@prog, @opts, @args);
     my $dbg = $self->dbglevel;
     if ($childsafe) {
-	$self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
+	$self->_addstats("@prog", scalar @args) if %Argv::Summary;
 	$self->warning("cannot change \%ENV of child process") if $envp;
 	$self->warning("cannot close stdin of child process") if $ifd;
 	my %results = $self->_ipccmd(@cmd);
@@ -1054,8 +1055,7 @@ sub system {
 	    while (my @chunk = $limit > 0 ?
 		    splice(@args, 0, $limit) :
 		    _chunk_by_length(\@args, abs($limit))) {
-		$self->_addstats("@prog", scalar @chunk)
-						    if defined(%Argv::Summary);
+		$self->_addstats("@prog", scalar @chunk) if %Argv::Summary;
 		@cmd = (@prog, @opts, @chunk);
 		$self->_dbg($dbg, '+', \*_E, @cmd) if $dbg;
 		if ($envp) {
@@ -1066,7 +1066,7 @@ sub system {
 		}
 	    }
 	} else {
-	    $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
+	    $self->_addstats("@prog", scalar @args) if %Argv::Summary;
 	    $self->_dbg($dbg, '+', \*_E, @cmd) if $dbg;
 	    if ($envp) {
 		local %ENV = %$envp;
@@ -1112,7 +1112,7 @@ sub qx {
     my($ifd, $ofd, $efd) = ($self->stdin, $self->stdout, $self->stderr);
     my $noexec = $self->noexec && !$self->_read_only;
     if ($childsafe) {
-	$self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
+	$self->_addstats("@prog", scalar @args) if %Argv::Summary;
 	$self->warning("cannot change \%ENV of child process") if $envp;
 	$self->warning("cannot close stdin of child process") if $ifd;
 	if ($noexec) {
@@ -1153,8 +1153,7 @@ sub qx {
 	    while (my @chunk = $limit > 0 ?
 		    splice(@args, 0, $limit) :
 		    _chunk_by_length(\@args, abs($limit))) {
-		$self->_addstats("@prog", scalar @chunk)
-						    if defined(%Argv::Summary);
+		$self->_addstats("@prog", scalar @chunk) if %Argv::Summary;
 		@cmd = (@prog, @opts, @chunk);
 		if ($noexec) {
 		    $self->_dbg($dbg, '-', \*STDERR, @cmd);
@@ -1172,7 +1171,7 @@ sub qx {
 		}
 	    }
 	} else {
-	    $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
+	    $self->_addstats("@prog", scalar @args) if %Argv::Summary;
 	    if ($noexec) {
 		$self->_dbg($dbg, '-', \*STDERR, @cmd);
 	    } else {
@@ -1197,12 +1196,12 @@ sub qx {
     }
     $self->unixpath(@data) if MSWIN && $self->outpathnorm;
     if (wantarray) {
-	print map {"+ <- $_"} @data if @data && $dbg >= 2;
+	print STDERR map {"+ <- $_"} @data if @data && $dbg >= 2;
 	chomp(@data) if $self->autochomp;
 	return @data;
     } else {
 	my $data = join('', @data);
-	print "+ <- $data" if @data && $dbg >= 2;
+	print STDERR "+ <- $data" if @data && $dbg >= 2;
 	chomp($data) if $self->autochomp;
 	return $data;
     }
@@ -1263,7 +1262,7 @@ sub readpipe {
     my($ifd, $ofd, $efd) = ($self->stdin, $self->stdout, $self->stderr);
     my $noexec = $self->noexec && !$self->_read_only;
     $dbg = $self->dbglevel;
-    $self->_addstats("@prog", scalar @args) if defined(%Argv::Summary);
+    $self->_addstats("@prog", scalar @args) if %Argv::Summary;
     if ($noexec) {
 	$self->_dbg($dbg, '-', \*STDERR, @cmd, '|');
     } else {

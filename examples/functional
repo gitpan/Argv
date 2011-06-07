@@ -1,3 +1,5 @@
+#!perl
+
 ## Demo of the functional interface
 
 use Argv qw(system qv);
