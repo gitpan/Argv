@@ -303,3 +303,7 @@ Revision history for Perl extension Argv.
 	  stdout instead of stderr where it should.
 	- remove defined(%Argv::Summary): deprecated in Perl 5.12
 	- silenced a spurious(?) 5.12 redefinition warning around exec.
+
+1.28 Sat Jan 26 18:15:48 CET 2013
+        - Restored Argv::Summary functionality, disabled by the previous fix.
+	  Fixes contributed by Marc Girod.

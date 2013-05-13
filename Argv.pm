@@ -1,6 +1,6 @@
 package Argv;
 
-$VERSION = '1.27';
+$VERSION = '1.28';
 @ISA = qw(Exporter);
 
 use constant MSWIN => $^O =~ /MSWin|Windows_NT/i ? 1 : 0;
@@ -245,22 +245,20 @@ sub summary {
     my $cls = shift;
     my($cmds, $operands);
     if (!defined wantarray) {
-	# This is a horrible hack ....
-	%Argv::Summary = (FOO => 0);
-	%Argv::Summary = ();
+	$Argv::Summary = {};
 	return;
     }
-    return unless %Argv::Summary;
+    return unless $Argv::Summary;
     my $fmt = "%30s:  %4s\t%s\n";
     my $str = sprintf $fmt, "$cls Summary", 'Cmds', 'Operands';
-    for (sort keys %Argv::Summary) {
-	my @stats = @{$Argv::Summary{$_}};
+    for (sort keys %{$Argv::Summary}) {
+	my @stats = @{$Argv::Summary->{$_}};
 	$cmds += $stats[0];
 	$operands += $stats[1];
 	$str .= sprintf $fmt, $_, $stats[0], $stats[1];
     }
     $str .= sprintf $fmt, 'TOTAL', $cmds, $operands if defined $cmds;
-    %Argv::Summary = ();
+    $Argv::Summary = 0;
     return $str;
 }
 
@@ -656,10 +654,10 @@ sub _sets2opts {
 sub _addstats {
     my $self = shift;
     my($prg, $argcnt) = @_;
-    my $stats = $Argv::Summary{$prg} || [0, 0];
+    my $stats = $Argv::Summary->{$prg} || [0, 0];
     $$stats[0]++;
     $$stats[1] += $argcnt;
-    $Argv::Summary{$prg} = $stats;
+    $Argv::Summary->{$prg} = $stats;
 }
 
 # Handles ->autofail operations. If given a scalar, exit with the value
@@ -971,7 +969,7 @@ sub system {
     my @cmd = (@prog, @opts, @args);
     my $dbg = $self->dbglevel;
     if ($childsafe) {
-	$self->_addstats("@prog", scalar @args) if %Argv::Summary;
+	$self->_addstats("@prog", scalar @args) if $Argv::Summary;
 	$self->warning("cannot change \%ENV of child process") if $envp;
 	$self->warning("cannot close stdin of child process") if $ifd;
 	my %results = $self->_ipccmd(@cmd);
@@ -1055,7 +1053,7 @@ sub system {
 	    while (my @chunk = $limit > 0 ?
 		    splice(@args, 0, $limit) :
 		    _chunk_by_length(\@args, abs($limit))) {
-		$self->_addstats("@prog", scalar @chunk) if %Argv::Summary;
+		$self->_addstats("@prog", scalar @chunk) if $Argv::Summary;
 		@cmd = (@prog, @opts, @chunk);
 		$self->_dbg($dbg, '+', \*_E, @cmd) if $dbg;
 		if ($envp) {
@@ -1066,7 +1064,7 @@ sub system {
 		}
 	    }
 	} else {
-	    $self->_addstats("@prog", scalar @args) if %Argv::Summary;
+	    $self->_addstats("@prog", scalar @args) if $Argv::Summary;
 	    $self->_dbg($dbg, '+', \*_E, @cmd) if $dbg;
 	    if ($envp) {
 		local %ENV = %$envp;
@@ -1112,7 +1110,7 @@ sub qx {
     my($ifd, $ofd, $efd) = ($self->stdin, $self->stdout, $self->stderr);
     my $noexec = $self->noexec && !$self->_read_only;
     if ($childsafe) {
-	$self->_addstats("@prog", scalar @args) if %Argv::Summary;
+	$self->_addstats("@prog", scalar @args) if $Argv::Summary;
 	$self->warning("cannot change \%ENV of child process") if $envp;
 	$self->warning("cannot close stdin of child process") if $ifd;
 	if ($noexec) {
@@ -1153,7 +1151,7 @@ sub qx {
 	    while (my @chunk = $limit > 0 ?
 		    splice(@args, 0, $limit) :
 		    _chunk_by_length(\@args, abs($limit))) {
-		$self->_addstats("@prog", scalar @chunk) if %Argv::Summary;
+		$self->_addstats("@prog", scalar @chunk) if $Argv::Summary;
 		@cmd = (@prog, @opts, @chunk);
 		if ($noexec) {
 		    $self->_dbg($dbg, '-', \*STDERR, @cmd);
@@ -1171,7 +1169,7 @@ sub qx {
 		}
 	    }
 	} else {
-	    $self->_addstats("@prog", scalar @args) if %Argv::Summary;
+	    $self->_addstats("@prog", scalar @args) if $Argv::Summary;
 	    if ($noexec) {
 		$self->_dbg($dbg, '-', \*STDERR, @cmd);
 	    } else {
@@ -1262,7 +1260,7 @@ sub readpipe {
     my($ifd, $ofd, $efd) = ($self->stdin, $self->stdout, $self->stderr);
     my $noexec = $self->noexec && !$self->_read_only;
     $dbg = $self->dbglevel;
-    $self->_addstats("@prog", scalar @args) if %Argv::Summary;
+    $self->_addstats("@prog", scalar @args) if $Argv::Summary;
     if ($noexec) {
 	$self->_dbg($dbg, '-', \*STDERR, @cmd, '|');
     } else {
@@ -2300,5 +2298,7 @@ Double your money back!
 =head1 SEE ALSO
 
 perl(1), Getopt::Long(3), IPC::ChildSafe(3)
+
+For Windows quoting background: http://blogs.msdn.com/b/oldnewthing/archive/2010/09/17/10063629.aspx
 
 =cut
